@@ -1,14 +1,23 @@
 services:
-  # PHP mit fertigem Image (kein Build nötig!)
+  # PHP-FPM mit Development Server Port
   php:
     image: php:8.3-fpm
     container_name: jg_php
+    ports:
+      - "8000:8000"  # Laravel Development Server
     volumes:
       - ./backend/api:/var/www/html
     networks:
       - jeder_gewinnt
     depends_on:
       - mysql
+      - redis
+    environment:
+      DB_HOST: mysql
+      DB_DATABASE: jeder_gewinnt
+      DB_USERNAME: jg_user
+      DB_PASSWORD: jg_password
+      REDIS_HOST: redis
 
   # Nginx Web Server
   nginx:

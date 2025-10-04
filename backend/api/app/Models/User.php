@@ -1,48 +1,75 @@
 <?php
+// =====================================================
+// MODEL 1: app/Models/User.php
+// =====================================================
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
+        'email', 'username', 'password', 'role',
+        'first_name', 'last_name', 'phone', 'birth_date',
+        'street', 'city', 'postal_code', 'country_code',
+        'kyc_status', 'age_verified', 'status'
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
-        'password',
-        'remember_token',
+        'password', 'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'last_login_at' => 'datetime',
+        'birth_date' => 'date',
+        'age_verified' => 'boolean',
+        'password' => 'hashed',
+    ];
+
+    public function wallet()
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->hasOne(Wallet::class);
+    }
+
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'seller_id');
+    }
+
+    public function tickets()
+    {
+        return $this->hasMany(Ticket::class);
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    public function spendingLimits()
+    {
+        return $this->hasMany(SpendingLimit::class);
+    }
+
+    public function isSeller(): bool
+    {
+        return in_array($this->role, ['seller', 'both', 'admin']);
+    }
+
+    public function isBuyer(): bool
+    {
+        return in_array($this->role, ['buyer', 'both', 'admin']);
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
     }
 }
