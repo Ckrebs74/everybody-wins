@@ -1,21 +1,14 @@
-yaml
-version: '3.8'
-
 services:
-  # PHP Application
+  # PHP mit fertigem Image (kein Build nötig!)
   php:
-    build: 
-      context: ./infrastructure/docker/php
-      dockerfile: Dockerfile
+    image: php:8.3-fpm
     container_name: jg_php
     volumes:
       - ./backend/api:/var/www/html
-      - ./storage:/var/www/storage
     networks:
       - jeder_gewinnt
     depends_on:
       - mysql
-      - redis
 
   # Nginx Web Server
   nginx:
