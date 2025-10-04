@@ -1,3 +1,5 @@
+<?php
+
 // =====================================================
 // MODEL 3: app/Models/SpendingLimit.php
 // KRITISCH für 10€/Stunde Regulierung!
