@@ -1,9 +1,5 @@
 <?php
 
-// =====================================================
-// MODEL 5: app/Models/Raffle.php
-// =====================================================
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,12 +10,24 @@ class Raffle extends Model
     use HasFactory;
 
     protected $fillable = [
-        'product_id', 'starts_at', 'ends_at', 'drawn_at',
-        'target_price', 'platform_fee', 'total_target',
-        'status', 'target_reached', 'tickets_sold',
-        'total_revenue', 'unique_participants',
-        'winner_ticket_id', 'winner_notified_at', 'prize_claimed',
-        'final_decision', 'payout_amount', 'random_seed'
+        'product_id',
+        'starts_at',
+        'ends_at',
+        'drawn_at',
+        'target_price',
+        'platform_fee',
+        'total_target',
+        'status',
+        'target_reached',
+        'tickets_sold',
+        'total_revenue',
+        'unique_participants',
+        'winner_ticket_id',
+        'winner_notified_at',
+        'prize_claimed',
+        'final_decision',
+        'payout_amount',
+        'random_seed'
     ];
 
     protected $casts = [
@@ -27,28 +35,18 @@ class Raffle extends Model
         'ends_at' => 'datetime',
         'drawn_at' => 'datetime',
         'winner_notified_at' => 'datetime',
-        'target_reached' => 'boolean',
-        'prize_claimed' => 'boolean',
         'target_price' => 'decimal:2',
         'platform_fee' => 'decimal:2',
         'total_target' => 'decimal:2',
         'total_revenue' => 'decimal:2',
         'payout_amount' => 'decimal:2',
+        'target_reached' => 'boolean',
+        'prize_claimed' => 'boolean',
+        'tickets_sold' => 'integer',
+        'unique_participants' => 'integer'
     ];
 
-    protected static function boot()
-    {
-        parent::boot();
-
-        static::creating(function ($raffle) {
-            // Automatisch 30% Platform Fee berechnen
-            if (empty($raffle->platform_fee)) {
-                $raffle->platform_fee = $raffle->target_price * 0.30;
-                $raffle->total_target = $raffle->target_price + $raffle->platform_fee;
-            }
-        });
-    }
-
+    // Relationships
     public function product()
     {
         return $this->belongsTo(Product::class);
@@ -64,9 +62,31 @@ class Raffle extends Model
         return $this->belongsTo(Ticket::class, 'winner_ticket_id');
     }
 
-    public function isActive(): bool
+    // Scopes
+    public function scopeActive($query)
     {
-        return $this->status === 'active' && 
-               now()->between($this->starts_at, $this->ends_at);
+        return $query->where('status', 'active');
+    }
+
+    public function scopeCompleted($query)
+    {
+        return $query->where('status', 'completed');
+    }
+
+    // Methods
+    public function isActive()
+    {
+        return $this->status === 'active' && $this->ends_at > now();
+    }
+
+    public function hasEnded()
+    {
+        return $this->ends_at <= now();
+    }
+
+    public function getProgressPercentage()
+    {
+        if ($this->total_target <= 0) return 0;
+        return min(100, round(($this->total_revenue / $this->total_target) * 100, 2));
     }
 }

@@ -1,9 +1,4 @@
-<?php 
-
-
-// =====================================================
-// MODEL 6: app/Models/Ticket.php
-// =====================================================
+<?php
 
 namespace App\Models;
 
@@ -14,33 +9,25 @@ class Ticket extends Model
 {
     use HasFactory;
 
-    public $timestamps = false;
-
     protected $fillable = [
-        'raffle_id', 'user_id', 'ticket_number',
-        'price', 'status', 'is_bonus_ticket', 'purchased_at'
+        'raffle_id',
+        'user_id',
+        'ticket_number',
+        'price',
+        'status',
+        'is_bonus_ticket'
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'is_bonus_ticket' => 'boolean',
-        'purchased_at' => 'datetime',
+        'purchased_at' => 'datetime'
     ];
 
-    protected static function boot()
-    {
-        parent::boot();
+    const CREATED_AT = 'purchased_at';
+    const UPDATED_AT = null;
 
-        static::creating(function ($ticket) {
-            if (empty($ticket->ticket_number)) {
-                $ticket->ticket_number = self::generateTicketNumber();
-            }
-            if (empty($ticket->purchased_at)) {
-                $ticket->purchased_at = now();
-            }
-        });
-    }
-
+    // Relationships
     public function raffle()
     {
         return $this->belongsTo(Raffle::class);
@@ -51,12 +38,19 @@ class Ticket extends Model
         return $this->belongsTo(User::class);
     }
 
-    private static function generateTicketNumber(): string
+    public function product()
     {
-        do {
-            $number = 'TK' . strtoupper(Str::random(8)) . rand(1000, 9999);
-        } while (self::where('ticket_number', $number)->exists());
+        return $this->hasOneThrough(Product::class, Raffle::class, 'id', 'id', 'raffle_id', 'product_id');
+    }
 
-        return $number;
+    // Scopes
+    public function scopeValid($query)
+    {
+        return $query->where('status', 'valid');
+    }
+
+    public function scopeWinner($query)
+    {
+        return $query->where('status', 'winner');
     }
 }

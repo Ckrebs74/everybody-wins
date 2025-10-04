@@ -1,72 +1,103 @@
-{{-- =====================================================
-FILE: resources/views/raffles/index.blade.php
-===================================================== --}}
 @extends('layouts.app')
 
-@section('title', 'Alle Verlosungen')
-
 @section('content')
-<div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-800">Aktuelle Verlosungen</h1>
-    <p class="text-gray-600 mt-2">Für nur 1€ pro Los die Chance auf hochwertige Produkte!</p>
-</div>
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">🎯 Aktive Verlosungen - DEBUG MODE</h1>
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    @forelse($raffles as $raffle)
-        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <div class="p-6">
-                <h3 class="font-bold text-xl mb-2">{{ $raffle->product->title }}</h3>
+    {{-- Debug Info --}}
+    <div class="bg-yellow-100 p-4 mb-4 rounded">
+        <p>Anzahl Produkte: {{ $products->count() }}</p>
+    </div>
+
+    {{-- Products Grid --}}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        @foreach($products as $product)
+            @php
+                // Debug: Hole das erste Bild DIREKT
+                $firstImage = null;
+                $imageUrl = '';
                 
-                <div class="mb-4">
-                    <p class="text-gray-600 text-sm mb-2">{{ Str::limit($raffle->product->description, 100) }}</p>
-                    <p class="text-sm">
-                        <span class="font-semibold">Marke:</span> {{ $raffle->product->brand ?? 'N/A' }}<br>
-                        <span class="font-semibold">Zustand:</span> {{ ucfirst($raffle->product->condition) }}<br>
-                        <span class="font-semibold">UVP:</span> {{ number_format($raffle->product->retail_price ?? 0, 2) }}€
-                    </p>
+                // Check ob images geladen sind
+                if ($product->images && $product->images->count() > 0) {
+                    // Suche primary image
+                    $primaryImage = $product->images->where('is_primary', 1)->first();
+                    if ($primaryImage) {
+                        $imageUrl = $primaryImage->image_path;
+                    } else {
+                        // Nimm erstes Bild
+                        $firstImage = $product->images->first();
+                        if ($firstImage) {
+                            $imageUrl = $firstImage->image_path;
+                        }
+                    }
+                }
+                
+                // Fallback
+                if (empty($imageUrl)) {
+                    $imageUrl = 'https://via.placeholder.com/400x400/FFD700/333333?text=' . urlencode($product->title);
+                }
+            @endphp
+            
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                {{-- Debug Info --}}
+                <div class="bg-red-500 text-white text-xs p-2">
+                    ID: {{ $product->id }} | 
+                    Bilder: {{ $product->images ? $product->images->count() : 0 }} |
+                    Raffle: {{ $product->raffle ? 'JA' : 'NEIN' }}
                 </div>
-
-                <!-- Progress Bar -->
-                <div class="mb-4">
-                    <div class="flex justify-between text-sm text-gray-600 mb-1">
-                        <span>{{ $raffle->tickets_sold }} Lose verkauft</span>
-                        <span>Ziel: {{ number_format($raffle->total_target, 0) }}€</span>
-                    </div>
-                    <div class="bg-gray-200 rounded-full h-4">
-                        @php
-                            $progress = min(100, ($raffle->total_revenue / $raffle->total_target) * 100);
-                        @endphp
-                        <div class="bg-yellow-500 h-4 rounded-full transition-all duration-300" 
-                             style="width: {{ $progress }}%">
-                        </div>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">
-                        {{ number_format($progress, 1) }}% vom Ziel erreicht
-                    </p>
-                </div>
-
-                <!-- Info -->
-                <div class="mb-4 text-sm text-gray-600">
-                    <p>⏰ Endet: {{ $raffle->ends_at->format('d.m.Y H:i') }} Uhr</p>
-                    <p>👥 {{ $raffle->unique_participants }} Teilnehmer</p>
-                </div>
-
-                <!-- CTA Button -->
-                <a href="{{ route('raffles.show', $raffle) }}" 
-                   class="block w-full bg-yellow-500 text-gray-800 font-bold py-3 rounded-lg text-center hover:bg-yellow-400 transition">
-                    Jetzt mitmachen - nur 1€ pro Los!
+                
+                {{-- Bild --}}
+                <a href="{{ route('raffles.show', $product->id) }}" class="block">
+                    <img src="{{ $imageUrl }}" 
+                         alt="{{ $product->title }}"
+                         class="w-full h-64 object-cover"
+                         style="background-color: #f0f0f0;">
                 </a>
-            </div>
-        </div>
-    @empty
-        <div class="col-span-3 text-center py-8">
-            <p class="text-gray-500">Aktuell keine aktiven Verlosungen.</p>
-        </div>
-    @endforelse
-</div>
+                
+                {{-- URL anzeigen zum Debuggen --}}
+                <div class="bg-gray-100 text-xs p-2 break-all">
+                    URL: {{ substr($imageUrl, 0, 80) }}...
+                </div>
 
-<!-- Pagination -->
-<div class="mt-8">
-    {{ $raffles->links() }}
+                <div class="p-4">
+                    <h3 class="font-semibold text-lg mb-2">{{ $product->title }}</h3>
+                    
+                    @if($product->raffle)
+                        <div class="mb-3">
+                            <div class="text-sm text-gray-600">
+                                {{ $product->raffle->tickets_sold }} Lose verkauft
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                @php
+                                    $progress = 0;
+                                    if ($product->raffle->total_target > 0) {
+                                        $progress = min(100, ($product->raffle->total_revenue / $product->raffle->total_target) * 100);
+                                    }
+                                @endphp
+                                <div class="bg-yellow-500 h-2 rounded-full" style="width: {{ $progress }}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-xl font-bold text-yellow-600">1€</span>
+                            <span class="text-sm">Wert: {{ number_format($product->target_price, 0) }}€</span>
+                        </div>
+                    @endif
+                    
+                    <a href="{{ route('raffles.show', $product->id) }}" 
+                       class="block w-full bg-yellow-500 text-center text-white py-2 rounded mt-3 hover:bg-yellow-600">
+                        Details →
+                    </a>
+                </div>
+            </div>
+        @endforeach
+    </div>
+
+    {{-- Pagination --}}
+    @if($products->hasPages())
+        <div class="mt-8">
+            {{ $products->links() }}
+        </div>
+    @endif
 </div>
 @endsection
