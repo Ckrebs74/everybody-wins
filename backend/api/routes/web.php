@@ -56,18 +56,17 @@ Route::get('/raffles/{slug}', [RaffleController::class, 'show'])->name('raffles.
 // Verkäufer-Bereich (nur für Verkäufer und Admins)
 Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(function () {
     
-    // Dashboard - KORRIGIERT: index() statt dashboard()
+    // Dashboard
     Route::get('/dashboard', [SellerController::class, 'index'])->name('dashboard');
-    
-    // Produktverwaltung
-    Route::get('/products', [SellerController::class, 'products'])->name('products.index');
-    Route::get('/products/{id}', [SellerController::class, 'show'])->name('products.show');
     
     // Analytics
     Route::get('/analytics', [SellerController::class, 'analytics'])->name('analytics');
+    
+    // Produktverwaltung - Liste
+    Route::get('/products', [SellerController::class, 'products'])->name('products.index');
 });
 
-// Multi-Step Produkterstellung - KORRIGIERT: Eigene Gruppe ohne doppelte Verschachtelung
+// Multi-Step Produkterstellung - MUSS VOR /products/{id} kommen!
 Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.products.')->group(function () {
     
     // SCHRITT 1: Kategorie & Typ auswählen
@@ -104,4 +103,11 @@ Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.p
     
     Route::delete('/media/{id}', [SellerController::class, 'deleteMedia'])->name('delete-media');
     Route::post('/media/reorder', [SellerController::class, 'reorderMedia'])->name('reorder-media');
+});
+
+// Produktdetails - MUSS NACH /create Routes kommen + nur Zahlen erlauben
+Route::middleware(['auth', 'seller'])->group(function () {
+    Route::get('/seller/products/{id}', [SellerController::class, 'show'])
+        ->where('id', '[0-9]+')  // NUR Zahlen, damit "create" nicht matched
+        ->name('seller.products.show');
 });
