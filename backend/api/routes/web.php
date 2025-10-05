@@ -5,6 +5,7 @@ use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\WalletController;
+use App\Http\Controllers\SellerController;
 use Illuminate\Support\Facades\Route;
 
 // Homepage
@@ -52,3 +53,23 @@ Route::middleware('auth')->group(function () {
 // Public Raffle Routes
 Route::get('/raffles', [RaffleController::class, 'index'])->name('raffles.index');
 Route::get('/raffles/{raffle}', [RaffleController::class, 'show'])->name('raffles.show');
+
+// Verkäufer-Bereich (nur für Verkäufer und Admins)
+Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(function () {
+    
+    // Dashboard
+    Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');
+    
+    // Produktverwaltung
+    Route::get('/products', [SellerController::class, 'products'])->name('products.index');
+    Route::get('/products/{id}', [SellerController::class, 'show'])->name('products.show');
+    
+    // Analytics
+    Route::get('/analytics', [SellerController::class, 'analytics'])->name('analytics');
+    
+    // Später: Produkterstellung
+    // Route::get('/products/create', [SellerController::class, 'create'])->name('products.create');
+    // Route::post('/products', [SellerController::class, 'store'])->name('products.store');
+    // Route::get('/products/{id}/edit', [SellerController::class, 'edit'])->name('products.edit');
+    // Route::put('/products/{id}', [SellerController::class, 'update'])->name('products.update');
+});
