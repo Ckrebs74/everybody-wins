@@ -48,15 +48,14 @@ class RaffleController extends Controller
                 $query->orderBy('target_price', 'desc');
                 break;
             case 'popular':
-                // Join mit raffles für Sortierung nach tickets_sold
-                $query->select('products.*')
-                      ->leftJoin('raffles', 'products.id', '=', 'raffles.product_id')
-                      ->orderBy('raffles.tickets_sold', 'desc');
+                // Sortiere mit withCount statt Join
+                $query->withCount('tickets')->orderBy('tickets_count', 'desc');
                 break;
             case 'ending_soon':
-                $query->select('products.*')
-                      ->leftJoin('raffles', 'products.id', '=', 'raffles.product_id')
-                      ->orderBy('raffles.ends_at', 'asc');
+                // Hier brauchen wir den Join, aber NACH dem orderBy das select
+                $query->leftJoin('raffles', 'products.id', '=', 'raffles.product_id')
+                      ->orderBy('raffles.ends_at', 'asc')
+                      ->select('products.*');
                 break;
             default:
                 $query->orderBy('products.created_at', 'desc');
@@ -198,9 +197,9 @@ class RaffleController extends Controller
                   ->where('ends_at', '<', now()->addHours(24));
             })
             ->where('status', 'active')
-            ->select('products.*')
             ->leftJoin('raffles', 'products.id', '=', 'raffles.product_id')
             ->orderBy('raffles.ends_at', 'asc')
+            ->select('products.*')  // NACH dem orderBy!
             ->paginate(12);
 
         $categories = Category::withCount(['products' => function($q) {
@@ -228,9 +227,9 @@ class RaffleController extends Controller
                   ->where('tickets_sold', '>', 0);
             })
             ->where('status', 'active')
-            ->select('products.*')
             ->leftJoin('raffles', 'products.id', '=', 'raffles.product_id')
             ->orderBy('raffles.tickets_sold', 'desc')
+            ->select('products.*')  // NACH dem orderBy!
             ->paginate(12);
 
         $categories = Category::withCount(['products' => function($q) {

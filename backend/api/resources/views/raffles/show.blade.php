@@ -10,13 +10,13 @@
                 {{-- Main Image --}}
                 <div class="mb-4 relative">
                     @php
-                        $mainImageUrl = $product->images->first()->image_path ?? $product->primary_image_url ?? 'https://via.placeholder.com/600x600/FFD700/333333?text=' . urlencode($product->title);
+                        $mainImageUrl = $product->images->first()->image_path ?? $product->primary_image_url ?? 'https://dummyimage.com/600x600/FFD700/333333?text=' . urlencode($product->title);
                     @endphp
                     <img id="mainImage" 
                          src="{{ $mainImageUrl }}" 
                          alt="{{ $product->title }}"
                          class="w-full h-96 object-contain bg-gray-100 rounded-lg"
-                         onerror="this.src='https://via.placeholder.com/600x600/FFD700/333333?text={{ urlencode($product->title) }}'">
+                         onerror="this.src='https://dummyimage.com/600x600/FFD700/333333?text={{ urlencode($product->title) }}'">
                     
                     @if($product->images->count() > 1)
                         {{-- Navigation Arrows --}}
@@ -51,7 +51,7 @@
                                  data-full-url="{{ $image->image_path }}"
                                  onclick="changeMainImage(this, {{ $index }})"
                                  class="thumbnail w-full h-20 object-cover rounded cursor-pointer border-2 hover:border-yellow-500 transition-colors {{ $index === 0 ? 'border-yellow-500' : 'border-gray-300' }}"
-                                 onerror="this.src='https://via.placeholder.com/150x150/FFD700/333333?text=Bild+{{ $index + 1 }}'">
+                                 onerror="this.src='https://dummyimage.com/150x150/FFD700/333333?text=Bild+{{ $index + 1 }}'">
                         @endforeach
                     </div>
                 @endif
@@ -291,11 +291,11 @@
                         <a href="{{ route('raffles.show', $related->id) }}" 
                            class="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow group">
                             <div class="aspect-w-1 aspect-h-1 bg-gray-100">
-                                <img src="{{ $related->primary_image_url ?? 'https://via.placeholder.com/300x300/FFD700/333333?text=' . urlencode($related->title) }}" 
+                                <img src="{{ $related->primary_image_url ?? 'https://dummyimage.com/300x300/FFD700/333333?text=' . urlencode($related->title) }}" 
                                      alt="{{ $related->title }}"
                                      class="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
                                      loading="lazy"
-                                     onerror="this.src='https://via.placeholder.com/300x300/FFD700/333333?text={{ urlencode($related->title) }}'">
+                                     onerror="this.src='https://dummyimage.com/300x300/FFD700/333333?text={{ urlencode($related->title) }}'">
                             </div>
                             <div class="p-3">
                                 <p class="font-semibold text-sm line-clamp-2 mb-2">{{ $related->title }}</p>
