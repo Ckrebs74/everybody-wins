@@ -10,7 +10,10 @@ use Illuminate\Support\Facades\Route;
 
 // Homepage
 Route::get('/', function () {
-    $activeRaffles = \App\Models\Raffle::with('product')
+    $activeRaffles = \App\Models\Raffle::with([
+        'product',
+        'product.images'  // <-- NUR DIESE ZEILE HINZUFÜGEN
+    ])
         ->where('status', 'active')
         ->limit(6)
         ->get();
