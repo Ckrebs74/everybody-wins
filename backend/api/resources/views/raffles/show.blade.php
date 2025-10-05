@@ -1,6 +1,11 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    // Lade die Bilder mit der funktionierenden Methode
+    $productImages = $product->images()->get();
+@endphp
+
 <div class="container mx-auto px-4 py-8">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
@@ -9,10 +14,10 @@
             {{-- Main Image --}}
             <div class="mb-4 relative">
                 @php
-                    // Sicherer Zugriff auf Bilder mit Null-Check
+                    // Hole das Hauptbild
                     $mainImageUrl = null;
-                    if($product->images && $product->images->count() > 0) {
-                        $mainImageUrl = $product->images->first()->image_path;
+                    if($productImages->count() > 0) {
+                        $mainImageUrl = $productImages->first()->image_path;
                     } else {
                         $mainImageUrl = 'https://dummyimage.com/600x600/FFD700/333333?text=' . urlencode($product->title);
                     }
@@ -23,7 +28,7 @@
                      class="w-full h-96 object-contain bg-gray-100 rounded-lg"
                      onerror="this.src='https://dummyimage.com/600x600/FFD700/333333?text={{ urlencode($product->title) }}'">
                 
-                @if($product->images && $product->images->count() > 1)
+                @if($productImages->count() > 1)
                     {{-- Navigation Arrows --}}
                     <button onclick="previousImage()" 
                             class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white/80 hover:bg-white p-2 rounded-full shadow-lg">
@@ -37,9 +42,9 @@
             </div>
             
             {{-- Thumbnail Gallery --}}
-            @if($product->images && $product->images->count() > 1)
+            @if($productImages->count() > 1)
                 <div class="grid grid-cols-4 gap-2">
-                    @foreach($product->images as $index => $image)
+                    @foreach($productImages as $index => $image)
                         <img src="{{ $image->thumbnail_path ?? $image->image_path }}" 
                              alt="{{ $image->alt_text ?? $product->title }}"
                              class="w-full h-20 object-cover rounded cursor-pointer border-2 hover:border-yellow-500 transition-colors {{ $index === 0 ? 'border-yellow-500' : 'border-transparent' }}"
@@ -103,7 +108,7 @@
                             <p class="text-xs text-gray-600">Teilnehmer</p>
                         </div>
                         <div>
-                            <p class="text-2xl font-bold">{{ $product->raffle->ends_at->diffInDays(now()) }}</p>
+                            <p class="text-2xl font-bold">{{ max(0, $product->raffle->ends_at->diffInDays(now())) }}</p>
                             <p class="text-xs text-gray-600">Tage noch</p>
                         </div>
                     </div>
@@ -180,10 +185,13 @@
             <h2 class="text-2xl font-bold mb-6">Ähnliche Verlosungen</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 @foreach($relatedProducts as $related)
+                    @php
+                        $relatedImages = $related->images()->get();
+                    @endphp
                     <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
                         <div class="h-48 bg-gray-100">
-                            @if($related->images && $related->images->count() > 0)
-                                <img src="{{ $related->images->first()->image_path }}" 
+                            @if($relatedImages->count() > 0)
+                                <img src="{{ $relatedImages->first()->image_path }}" 
                                      alt="{{ $related->title }}"
                                      class="w-full h-full object-cover rounded-t-lg"
                                      onerror="this.src='https://dummyimage.com/400x300/cccccc/666666?text=No+Image'">
@@ -210,36 +218,34 @@
 
 @push('scripts')
 <script>
-    @if($product->images && $product->images->count() > 0)
-        const productImages = @json($product->images->pluck('image_path'));
-        let currentImageIndex = 0;
+    const productImages = @json($productImages->pluck('image_path'));
+    let currentImageIndex = 0;
+    
+    function selectImage(index) {
+        currentImageIndex = index;
+        document.getElementById('mainImage').src = productImages[index];
         
-        function selectImage(index) {
-            currentImageIndex = index;
-            document.getElementById('mainImage').src = productImages[index];
-            
-            // Update thumbnail borders
-            document.querySelectorAll('.grid.grid-cols-4 img').forEach((img, i) => {
-                if(i === index) {
-                    img.classList.add('border-yellow-500');
-                    img.classList.remove('border-transparent');
-                } else {
-                    img.classList.remove('border-yellow-500');
-                    img.classList.add('border-transparent');
-                }
-            });
-        }
-        
-        function nextImage() {
-            currentImageIndex = (currentImageIndex + 1) % productImages.length;
-            selectImage(currentImageIndex);
-        }
-        
-        function previousImage() {
-            currentImageIndex = (currentImageIndex - 1 + productImages.length) % productImages.length;
-            selectImage(currentImageIndex);
-        }
-    @endif
+        // Update thumbnail borders
+        document.querySelectorAll('.grid.grid-cols-4 img').forEach((img, i) => {
+            if(i === index) {
+                img.classList.add('border-yellow-500');
+                img.classList.remove('border-transparent');
+            } else {
+                img.classList.remove('border-yellow-500');
+                img.classList.add('border-transparent');
+            }
+        });
+    }
+    
+    function nextImage() {
+        currentImageIndex = (currentImageIndex + 1) % productImages.length;
+        selectImage(currentImageIndex);
+    }
+    
+    function previousImage() {
+        currentImageIndex = (currentImageIndex - 1 + productImages.length) % productImages.length;
+        selectImage(currentImageIndex);
+    }
     
     // Ticket quantity functions
     function updatePrice() {
