@@ -248,15 +248,15 @@
 </div>
 @endsection
 
-@push('scripts')
+{{-- Fügen Sie diesen Code DIREKT NACH @endsection ein (ohne @push) --}}
 <script>
     // Maximales Ausgabenlimit pro Stunde
     const MAX_SPENDING_PER_HOUR = 10;
-    const remainingBudget = {{ $remainingBudget }};
+    const remainingBudget = {{ $remainingBudget ?? 10 }};
     const maxTickets = Math.min(MAX_SPENDING_PER_HOUR, remainingBudget);
     
     // Bildergalerie-Funktionen
-    @if($productImages->count() > 0)
+    @if($productImages && $productImages->count() > 0)
         const productImages = @json($productImages->pluck('image_path'));
         let currentImageIndex = 0;
         
@@ -287,7 +287,7 @@
         }
     @endif
     
-    // Ticket-Mengen-Funktionen
+    // Ticket-Mengen-Funktionen - DIESE MÜSSEN GLOBAL SEIN!
     function updatePrice() {
         const quantity = parseInt(document.getElementById('ticketQuantity').value) || 1;
         const formattedPrice = quantity.toFixed(2).replace('.', ',');
@@ -295,14 +295,16 @@
         
         // Button aktivieren/deaktivieren basierend auf Budget
         const buyButton = document.getElementById('buyButton');
-        if (quantity > maxTickets) {
-            buyButton.disabled = true;
-            buyButton.classList.add('opacity-50', 'cursor-not-allowed');
-            buyButton.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>Ausgabenlimit überschritten';
-        } else {
-            buyButton.disabled = false;
-            buyButton.classList.remove('opacity-50', 'cursor-not-allowed');
-            buyButton.innerHTML = '<i class="fas fa-ticket-alt mr-2"></i>Jetzt Lose kaufen';
+        if (buyButton) {
+            if (quantity > maxTickets) {
+                buyButton.disabled = true;
+                buyButton.classList.add('opacity-50', 'cursor-not-allowed');
+                buyButton.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>Ausgabenlimit überschritten';
+            } else {
+                buyButton.disabled = false;
+                buyButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                buyButton.innerHTML = '<i class="fas fa-ticket-alt mr-2"></i>Jetzt Lose kaufen';
+            }
         }
     }
     
@@ -359,4 +361,3 @@
         }
     });
 </script>
-@endpush
