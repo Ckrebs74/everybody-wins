@@ -28,13 +28,17 @@
     {{-- Produkte Grid --}}
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         @forelse($products as $product)
+            @php
+                // Lade die Bilder mit der funktionierenden Methode
+                $productImages = $product->images()->get();
+            @endphp
             <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                 {{-- Bildanzeige mit product_images Tabelle --}}
                 <div class="relative h-64 bg-gray-100">
-                    @if($product->images && $product->images->count() > 0)
+                    @if($productImages->count() > 0)
                         @php
-                            $mainImage = $product->images->where('is_primary', true)->first() 
-                                      ?? $product->images->first();
+                            $mainImage = $productImages->where('is_primary', true)->first() 
+                                      ?? $productImages->first();
                         @endphp
                         <img src="{{ $mainImage->image_path }}" 
                              alt="{{ $mainImage->alt_text ?? $product->title }}"
