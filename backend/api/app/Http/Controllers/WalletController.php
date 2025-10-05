@@ -26,7 +26,6 @@ class WalletController extends Controller
         
         // Get transaction history
         $transactions = Transaction::where('user_id', $user->id)
-            ->with('product')
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
