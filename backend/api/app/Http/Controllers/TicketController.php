@@ -36,11 +36,17 @@ class TicketController extends Controller
 
         $user = Auth::user();
         $product = Product::with('raffle')->findOrFail($productId);
+        $raffle = $product->raffle;
+        
+        if (!$raffle) {
+            return back()->with('error', 'Für dieses Produkt existiert keine aktive Verlosung.');
+        }
+        
         $quantity = $request->quantity;
         $totalCost = $quantity * 1; // 1€ pro Los
 
         // Validierungen
-        if ($product->raffle->status !== 'active') {
+        if ($raffle->status !== 'active') {
             return back()->with('error', 'Diese Verlosung ist nicht mehr aktiv.');
         }
 
@@ -64,27 +70,27 @@ class TicketController extends Controller
             for ($i = 0; $i < $quantity; $i++) {
                 $tickets[] = Ticket::create([
                     'user_id' => $user->id,
-                    'product_id' => $product->id,
+                    'raffle_id' => $raffle->id,
                     'ticket_number' => $this->generateTicketNumber(),
-                    'purchase_price' => 1.00,
-                    'status' => 'active',
+                    'price' => 1.00,
+                    'status' => 'valid',
                 ]);
             }
 
             // Update wallet
-            $this->walletService->deductBalance($user->id, $totalCost, $product->id, 'ticket_purchase');
+            $this->walletService->deductBalance($user->id, $totalCost, $raffle->id, 'ticket_purchase');
 
             // Update spending limit
             $this->spendingLimitService->addSpending($user->id, $totalCost);
 
             // Update raffle stats
-            $raffle = $product->raffle;
             $raffle->tickets_sold += $quantity;
-            $raffle->current_amount += $totalCost;
+            $raffle->total_revenue += $totalCost;
             
             // Check if target reached
-            if ($raffle->current_amount >= $raffle->end_price) {
-                $raffle->status = 'completed';
+            if ($raffle->total_revenue >= $raffle->total_target) {
+                $raffle->target_reached = true;
+                $raffle->status = 'pending_draw';
             }
             
             $raffle->save();
@@ -121,8 +127,8 @@ class TicketController extends Controller
         $user = Auth::user();
         
         $tickets = Ticket::where('user_id', $user->id)
-            ->with(['product.images', 'product.raffle'])
-            ->orderBy('created_at', 'desc')
+            ->with(['raffle.product.images'])
+            ->orderBy('purchased_at', 'desc')
             ->paginate(20);
 
         return view('tickets.index', compact('tickets'));

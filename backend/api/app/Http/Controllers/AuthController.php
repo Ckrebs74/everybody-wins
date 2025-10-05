@@ -95,4 +95,4 @@ class AuthController extends Controller
         return redirect('/')
             ->with('success', 'Sie wurden erfolgreich abgemeldet.');
     }
-}s
+}

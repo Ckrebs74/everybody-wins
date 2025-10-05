@@ -2,13 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Raffle extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'product_id',
         'starts_at',
@@ -27,14 +24,10 @@ class Raffle extends Model
         'prize_claimed',
         'final_decision',
         'payout_amount',
-        'random_seed'
+        'random_seed',
     ];
 
     protected $casts = [
-        'starts_at' => 'datetime',
-        'ends_at' => 'datetime',
-        'drawn_at' => 'datetime',
-        'winner_notified_at' => 'datetime',
         'target_price' => 'decimal:2',
         'platform_fee' => 'decimal:2',
         'total_target' => 'decimal:2',
@@ -42,51 +35,33 @@ class Raffle extends Model
         'payout_amount' => 'decimal:2',
         'target_reached' => 'boolean',
         'prize_claimed' => 'boolean',
-        'tickets_sold' => 'integer',
-        'unique_participants' => 'integer'
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
+        'drawn_at' => 'datetime',
+        'winner_notified_at' => 'datetime',
     ];
 
-    // Relationships
+    /**
+     * Get the product that owns the raffle
+     */
     public function product()
     {
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Get the tickets for the raffle
+     */
     public function tickets()
     {
         return $this->hasMany(Ticket::class);
     }
 
+    /**
+     * Get the winning ticket
+     */
     public function winnerTicket()
     {
         return $this->belongsTo(Ticket::class, 'winner_ticket_id');
-    }
-
-    // Scopes
-    public function scopeActive($query)
-    {
-        return $query->where('status', 'active');
-    }
-
-    public function scopeCompleted($query)
-    {
-        return $query->where('status', 'completed');
-    }
-
-    // Methods
-    public function isActive()
-    {
-        return $this->status === 'active' && $this->ends_at > now();
-    }
-
-    public function hasEnded()
-    {
-        return $this->ends_at <= now();
-    }
-
-    public function getProgressPercentage()
-    {
-        if ($this->total_target <= 0) return 0;
-        return min(100, round(($this->total_revenue / $this->total_target) * 100, 2));
     }
 }

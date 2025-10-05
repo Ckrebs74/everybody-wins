@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductImage extends Model
 {
@@ -13,18 +12,18 @@ class ProductImage extends Model
         'thumbnail_path',
         'alt_text',
         'sort_order',
-        'is_primary'
+        'is_primary',
     ];
 
     protected $casts = [
+        'is_primary' => 'boolean',
         'sort_order' => 'integer',
-        'is_primary' => 'boolean'
     ];
 
     /**
-     * Get the product that owns the image.
+     * Get the product that owns the image
      */
-    public function product(): BelongsTo
+    public function product()
     {
         return $this->belongsTo(Product::class);
     }

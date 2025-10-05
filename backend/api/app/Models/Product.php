@@ -3,9 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
@@ -22,65 +19,54 @@ class Product extends Model
         'decision_type',
         'status',
         'slug',
-        'view_count'
+        'images',
+        'view_count',
     ];
 
     protected $casts = [
         'retail_price' => 'decimal:2',
         'target_price' => 'decimal:2',
+        'images' => 'array',
         'view_count' => 'integer',
-        'images' => 'array'  // Für die alte JSON-Spalte, falls noch verwendet
     ];
 
     /**
-     * Get the images for the product.
-     * WICHTIG: Diese Relationship lädt die Bilder aus der product_images Tabelle
+     * Get the seller that owns the product
      */
-    public function images(): HasMany
-    {
-        return $this->hasMany(ProductImage::class)->orderBy('sort_order');
-    }
-
-    /**
-     * Get the primary image for the product.
-     */
-    public function primaryImage(): HasOne
-    {
-        return $this->hasOne(ProductImage::class)->where('is_primary', true);
-    }
-
-    /**
-     * Get the seller (user) who owns the product.
-     */
-    public function seller(): BelongsTo
+    public function seller()
     {
         return $this->belongsTo(User::class, 'seller_id');
     }
 
     /**
-     * Get the category of the product.
+     * Get the category that owns the product
      */
-    public function category(): BelongsTo
+    public function category()
     {
         return $this->belongsTo(Category::class);
     }
 
     /**
-     * Get the raffle for the product.
+     * Get the raffle for the product
      */
-    public function raffle(): HasOne
+    public function raffle()
     {
         return $this->hasOne(Raffle::class);
     }
 
     /**
-     * Get remaining tickets
+     * Get the product images
      */
-    public function getRemainingTickets()
+    public function images()
     {
-        if (!$this->raffle) {
-            return 0;
-        }
-        return $this->raffle->total_target - $this->raffle->tickets_sold;
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order');
+    }
+
+    /**
+     * Get the primary image
+     */
+    public function primaryImage()
+    {
+        return $this->hasOne(ProductImage::class)->where('is_primary', true);
     }
 }

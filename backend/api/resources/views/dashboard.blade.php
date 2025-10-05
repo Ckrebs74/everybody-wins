@@ -2,177 +2,170 @@
 
 @section('content')
 <div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold mb-8">Mein Dashboard</h1>
-
-    @if(session('success'))
-        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-            {{ session('success') }}
-        </div>
-    @endif
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        
-        {{-- Wallet-Widget --}}
-        <div class="bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg shadow-lg p-6 text-white">
-            <h3 class="text-lg font-semibold mb-2">💰 Mein Guthaben</h3>
-            <p class="text-4xl font-bold mb-4">{{ number_format($user->wallet_balance, 2, ',', '.') }} €</p>
-            <a href="{{ route('wallet.index') }}" 
-               class="block bg-white text-yellow-600 text-center py-2 rounded-lg font-semibold hover:bg-gray-100">
-                Guthaben verwalten
-            </a>
-        </div>
-
-        {{-- Spending Limit --}}
-        <div class="bg-white rounded-lg shadow-lg p-6">
-            <h3 class="text-lg font-semibold mb-2">⏱️ Ausgabenlimit</h3>
-            <p class="text-sm text-gray-600 mb-2">Diese Stunde:</p>
-            <p class="text-2xl font-bold {{ $spendingStats['remaining_hour'] < 3 ? 'text-red-600' : 'text-green-600' }}">
-                {{ number_format($spendingStats['current_hour'], 2, ',', '.') }} € / 10,00 €
-            </p>
-            <div class="w-full bg-gray-200 rounded-full h-3 mt-3">
-                <div class="bg-blue-500 h-3 rounded-full transition-all" 
-                     style="width: {{ $spendingStats['percentage_used'] }}%"></div>
-            </div>
-            <p class="text-xs text-gray-500 mt-2">
-                Verbleibend: {{ number_format($spendingStats['remaining_hour'], 2, ',', '.') }} €
-            </p>
-        </div>
-
-        {{-- Ticket-Statistiken --}}
-        <div class="bg-white rounded-lg shadow-lg p-6">
-            <h3 class="text-lg font-semibold mb-2">🎟️ Meine Lose</h3>
-            <div class="space-y-2">
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Aktive:</span>
-                    <span class="font-bold text-blue-600">{{ $ticketCounts['active'] }}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Gewonnen:</span>
-                    <span class="font-bold text-green-600">{{ $ticketCounts['winner'] }}</span>
-                </div>
-                <div class="flex justify-between border-t pt-2">
-                    <span class="text-gray-600">Gesamt:</span>
-                    <span class="font-bold">{{ $ticketCounts['total'] }}</span>
-                </div>
-            </div>
-            <a href="{{ route('tickets.index') }}" 
-               class="block mt-4 text-center text-yellow-600 font-semibold hover:underline">
-                Alle Lose anzeigen →
-            </a>
-        </div>
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-800">Dashboard</h1>
+        <p class="text-gray-600">Willkommen zurück, {{ $user->name }}!</p>
     </div>
 
-    {{-- Aktive Tickets --}}
-    @if($activeTickets->count() > 0)
-        <div class="mb-8">
-            <h2 class="text-2xl font-bold mb-4">Aktive Teilnahmen</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                @foreach($activeTickets as $ticket)
-                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                        @php
-                            $image = $ticket->raffle->product->images()->where('is_primary', true)->first() 
-                                  ?? $ticket->raffle->product->images()->first();
-                        @endphp
-                        
-                        @if($image)
-                            <img src="{{ $image->image_path }}" 
-                                 alt="{{ $ticket->raffle->product->title }}"
-                                 class="w-full h-32 object-cover">
-                        @endif
-                        
-                        <div class="p-4">
-                            <h3 class="font-bold mb-2">{{ $ticket->raffle->product->title }}</h3>
-                            <p class="text-sm text-gray-600 mb-2">
-                                Los-Nr.: <span class="font-mono">{{ $ticket->ticket_number }}</span>
-                            </p>
-                            <p class="text-xs text-gray-500">
-                                Gekauft: {{ $ticket->purchased_at->format('d.m.Y H:i') }}
-                            </p>
-                            <a href="{{ route('raffles.show', $ticket->raffle->id) }}" 
-                               class="block mt-3 text-center bg-yellow-500 text-white py-2 rounded hover:bg-yellow-600">
-                                Zur Verlosung
-                            </a>
-                        </div>
-                    </div>
-                @endforeach
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Wallet Balance -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-gray-600 text-sm font-medium">Guthaben</h3>
+                <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
             </div>
+            <p class="text-3xl font-bold text-gray-800">{{ number_format($stats['wallet_balance'], 2) }}€</p>
+            <a href="{{ route('wallet.index') }}" class="text-yellow-500 text-sm hover:underline mt-2 inline-block">Aufladen →</a>
         </div>
-    @endif
 
-    {{-- Gewinnchancen --}}
-    @if(count($winningChances) > 0)
-        <div class="mb-8">
-            <h2 class="text-2xl font-bold mb-4">Meine Gewinnchancen</h2>
-            <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                <table class="w-full">
-                    <thead class="bg-gray-100">
-                        <tr>
-                            <th class="px-4 py-3 text-left">Produkt</th>
-                            <th class="px-4 py-3 text-center">Meine Lose</th>
-                            <th class="px-4 py-3 text-center">Gesamt Lose</th>
-                            <th class="px-4 py-3 text-center">Gewinnchance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($winningChances as $chance)
-                            <tr class="border-t">
-                                <td class="px-4 py-3">{{ $chance['product_title'] }}</td>
-                                <td class="px-4 py-3 text-center font-semibold">{{ $chance['user_tickets'] }}</td>
-                                <td class="px-4 py-3 text-center">{{ $chance['total_tickets'] }}</td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="font-bold text-green-600">{{ $chance['chance_percentage'] }}%</span>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+        <!-- Total Tickets -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-gray-600 text-sm font-medium">Meine Lose</h3>
+                <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path>
+                </svg>
             </div>
+            <p class="text-3xl font-bold text-gray-800">{{ $stats['total_tickets'] }}</p>
+            <p class="text-gray-500 text-sm mt-1">In {{ $stats['active_raffles'] }} Verlosungen</p>
         </div>
-    @endif
 
-    {{-- Letzte Transaktionen --}}
-    <div>
-        <h2 class="text-2xl font-bold mb-4">Letzte Transaktionen</h2>
-        <div class="bg-white rounded-lg shadow-md overflow-hidden">
-            @if($recentTransactions->count() > 0)
-                <table class="w-full">
-                    <thead class="bg-gray-100">
-                        <tr>
-                            <th class="px-4 py-3 text-left">Datum</th>
-                            <th class="px-4 py-3 text-left">Beschreibung</th>
-                            <th class="px-4 py-3 text-right">Betrag</th>
-                            <th class="px-4 py-3 text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($recentTransactions as $transaction)
-                            <tr class="border-t">
-                                <td class="px-4 py-3 text-sm">{{ $transaction->created_at->format('d.m.Y H:i') }}</td>
-                                <td class="px-4 py-3">{{ $transaction->description }}</td>
-                                <td class="px-4 py-3 text-right font-semibold {{ $transaction->amount < 0 ? 'text-red-600' : 'text-green-600' }}">
-                                    {{ $transaction->amount >= 0 ? '+' : '' }}{{ number_format($transaction->amount, 2, ',', '.') }} €
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="px-2 py-1 rounded text-xs font-semibold
-                                        {{ $transaction->status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
-                                        {{ $transaction->status }}
-                                    </span>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @else
-                <p class="p-6 text-gray-500 text-center">Noch keine Transaktionen vorhanden.</p>
+        <!-- Total Spent -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-gray-600 text-sm font-medium">Ausgegeben</h3>
+                <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"></path>
+                </svg>
+            </div>
+            <p class="text-3xl font-bold text-gray-800">{{ number_format($stats['total_spent'], 2) }}€</p>
+            <p class="text-gray-500 text-sm mt-1">Gesamt</p>
+        </div>
+
+        <!-- Spending Limit -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-gray-600 text-sm font-medium">Stündenlimit</h3>
+                <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <p class="text-3xl font-bold text-gray-800">{{ number_format($stats['remaining_budget'], 2) }}€</p>
+            <p class="text-gray-500 text-sm mt-1">noch verfügbar</p>
+            @if($stats['remaining_budget'] < 3)
+                <p class="text-red-500 text-xs mt-1">⚠️ Limit fast erreicht</p>
             @endif
         </div>
-        
-        @if($recentTransactions->count() > 0)
-            <a href="{{ route('wallet.index') }}" 
-               class="block mt-4 text-center text-yellow-600 font-semibold hover:underline">
-                Alle Transaktionen anzeigen →
-            </a>
-        @endif
     </div>
+
+    <!-- Active Tickets -->
+    @if($activeTickets->count() > 0)
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+        <h2 class="text-xl font-bold text-gray-800 mb-4">Aktive Teilnahmen</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            @foreach($activeTickets as $item)
+            <div class="border rounded-lg p-4 hover:shadow-md transition">
+                @if($item['product']->images->count() > 0)
+                    <img src="{{ $item['product']->images->first()->image_path }}" 
+                         alt="{{ $item['product']->title }}"
+                         class="w-full h-48 object-cover rounded-lg mb-3">
+                @else
+                    <div class="w-full h-48 bg-gray-200 rounded-lg mb-3 flex items-center justify-center">
+                        <span class="text-gray-400">Kein Bild</span>
+                    </div>
+                @endif
+                
+                <h3 class="font-bold text-gray-800 mb-2">{{ $item['product']->title }}</h3>
+                
+                <div class="space-y-1 text-sm">
+                    <p class="text-gray-600">
+                        <span class="font-semibold">Lose:</span> {{ $item['ticket_count'] }}
+                    </p>
+                    <p class="text-gray-600">
+                        <span class="font-semibold">Ausgegeben:</span> {{ number_format($item['total_spent'], 2) }}€
+                    </p>
+                    <p class="text-gray-600">
+                        <span class="font-semibold">Gewinnchance:</span> {{ $item['win_chance'] }}%
+                    </p>
+                </div>
+                
+                <a href="{{ route('raffles.show', $item['product']->id) }}" 
+                   class="mt-3 block text-center bg-yellow-500 hover:bg-yellow-600 text-gray-800 font-bold py-2 rounded-lg transition">
+                    Details ansehen
+                </a>
+            </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
+    <!-- Recent Transactions -->
+    @if($recentTransactions->count() > 0)
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <h2 class="text-xl font-bold text-gray-800 mb-4">Letzte Transaktionen</h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-2 px-4 text-sm font-semibold text-gray-600">Datum</th>
+                        <th class="text-left py-2 px-4 text-sm font-semibold text-gray-600">Typ</th>
+                        <th class="text-left py-2 px-4 text-sm font-semibold text-gray-600">Beschreibung</th>
+                        <th class="text-right py-2 px-4 text-sm font-semibold text-gray-600">Betrag</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($recentTransactions as $transaction)
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="py-3 px-4 text-sm text-gray-600">
+                            {{ $transaction->created_at->format('d.m.Y H:i') }}
+                        </td>
+                        <td class="py-3 px-4 text-sm">
+                            @if($transaction->type === 'deposit')
+                                <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">Einzahlung</span>
+                            @elseif($transaction->type === 'ticket_purchase')
+                                <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Loskauf</span>
+                            @elseif($transaction->type === 'withdrawal')
+                                <span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">Auszahlung</span>
+                            @else
+                                <span class="bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs">{{ $transaction->type }}</span>
+                            @endif
+                        </td>
+                        <td class="py-3 px-4 text-sm text-gray-800">
+                            {{ $transaction->description }}
+                        </td>
+                        <td class="py-3 px-4 text-sm font-semibold text-right">
+                            @if(in_array($transaction->type, ['deposit', 'win']))
+                                <span class="text-green-600">+{{ number_format($transaction->amount, 2) }}€</span>
+                            @else
+                                <span class="text-red-600">-{{ number_format($transaction->amount, 2) }}€</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ route('wallet.index') }}" class="mt-4 inline-block text-yellow-500 hover:underline">
+            Alle Transaktionen anzeigen →
+        </a>
+    </div>
+    @endif
+
+    @if($activeTickets->count() === 0 && $recentTransactions->count() === 0)
+    <div class="bg-white rounded-lg shadow-lg p-12 text-center">
+        <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path>
+        </svg>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">Keine Aktivität</h3>
+        <p class="text-gray-600 mb-6">Sie haben noch keine Lose gekauft. Starten Sie jetzt!</p>
+        <a href="{{ route('raffles.index') }}" class="bg-yellow-500 hover:bg-yellow-600 text-gray-800 font-bold py-3 px-6 rounded-lg inline-block transition">
+            Verlosungen durchsuchen
+        </a>
+    </div>
+    @endif
 </div>
 @endsection

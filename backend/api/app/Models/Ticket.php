@@ -2,55 +2,42 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Ticket extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'raffle_id',
         'user_id',
         'ticket_number',
         'price',
         'status',
-        'is_bonus_ticket'
+        'is_bonus_ticket',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'is_bonus_ticket' => 'boolean',
-        'purchased_at' => 'datetime'
+        'purchased_at' => 'datetime',
     ];
 
-    const CREATED_AT = 'purchased_at';
-    const UPDATED_AT = null;
+    // Timestamps
+    public $timestamps = false;
+    protected $dates = ['purchased_at'];
 
-    // Relationships
+    /**
+     * Get the raffle that owns the ticket
+     */
     public function raffle()
     {
         return $this->belongsTo(Raffle::class);
     }
 
+    /**
+     * Get the user that owns the ticket
+     */
     public function user()
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function product()
-    {
-        return $this->hasOneThrough(Product::class, Raffle::class, 'id', 'id', 'raffle_id', 'product_id');
-    }
-
-    // Scopes
-    public function scopeValid($query)
-    {
-        return $query->where('status', 'valid');
-    }
-
-    public function scopeWinner($query)
-    {
-        return $query->where('status', 'winner');
     }
 }

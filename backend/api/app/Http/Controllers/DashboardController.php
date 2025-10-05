@@ -34,10 +34,10 @@ class DashboardController extends Controller
             'wallet_balance' => $user->wallet_balance ?? 0,
             'total_tickets' => Ticket::where('user_id', $user->id)->count(),
             'active_raffles' => Ticket::where('user_id', $user->id)
-                ->whereHas('product.raffle', function($query) {
+                ->whereHas('raffle', function($query) {
                     $query->where('status', 'active');
                 })
-                ->distinct('product_id')
+                ->distinct('raffle_id')
                 ->count(),
             'total_spent' => $user->total_spent ?? 0,
             'spent_this_hour' => $spentThisHour,
@@ -46,25 +46,26 @@ class DashboardController extends Controller
 
         // Recent Transactions
         $recentTransactions = Transaction::where('user_id', $user->id)
-            ->with('product')
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get();
 
         // Active Tickets
         $activeTickets = Ticket::where('user_id', $user->id)
-            ->whereHas('product.raffle', function($query) {
+            ->whereHas('raffle', function($query) {
                 $query->where('status', 'active');
             })
-            ->with(['product.images', 'product.raffle'])
+            ->with(['raffle.product.images'])
             ->get()
-            ->groupBy('product_id')
+            ->groupBy('raffle_id')
             ->map(function($tickets) {
+                $raffle = $tickets->first()->raffle;
                 return [
-                    'product' => $tickets->first()->product,
+                    'product' => $raffle->product,
+                    'raffle' => $raffle,
                     'ticket_count' => $tickets->count(),
                     'total_spent' => $tickets->count() * 1, // 1€ pro Los
-                    'win_chance' => $this->calculateWinChance($tickets->first()->product, $tickets->count())
+                    'win_chance' => $this->calculateWinChance($raffle, $tickets->count())
                 ];
             });
 
@@ -74,9 +75,9 @@ class DashboardController extends Controller
     /**
      * Calculate winning chance
      */
-    private function calculateWinChance($product, $userTicketCount)
+    private function calculateWinChance($raffle, $userTicketCount)
     {
-        $totalTickets = Ticket::where('product_id', $product->id)->count();
+        $totalTickets = Ticket::where('raffle_id', $raffle->id)->count();
         
         if ($totalTickets === 0) {
             return 0;

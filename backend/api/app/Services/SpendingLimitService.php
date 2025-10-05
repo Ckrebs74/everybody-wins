@@ -3,122 +3,68 @@
 namespace App\Services;
 
 use App\Models\SpendingLimit;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class SpendingLimitService
 {
-    const HOURLY_LIMIT = 10.00; // 10€ pro Stunde (Glücksspielregulierung)
+    private $maxPerHour = 10; // 10€ pro Stunde (Glücksspielregulierung)
 
     /**
-     * Prüfe ob User noch ausgeben kann
+     * Check if user can spend amount
      */
-    public function canSpend(int $userId, float $amount): bool
+    public function canSpend($userId, $amount)
     {
-        $currentSpending = $this->getCurrentHourSpending($userId);
-        $remaining = self::HOURLY_LIMIT - $currentSpending;
-
-        return $remaining >= $amount;
+        $limit = $this->getCurrentHourLimit($userId);
+        return ($limit->amount_spent + $amount) <= $this->maxPerHour;
     }
 
     /**
-     * Hole aktuelle Ausgaben in dieser Stunde
+     * Add spending for user
      */
-    public function getCurrentHourSpending(int $userId): float
+    public function addSpending($userId, $amount)
     {
-        $hourSlot = $this->getCurrentHourSlot();
-
-        $limit = SpendingLimit::where('user_id', $userId)
-            ->where('hour_slot', $hourSlot)
-            ->first();
-
-        return $limit ? (float) $limit->amount_spent : 0.00;
+        $limit = $this->getCurrentHourLimit($userId);
+        $limit->amount_spent += $amount;
+        $limit->save();
+        
+        return $limit;
     }
 
     /**
-     * Hole verbleibendes Budget
+     * Get remaining budget for current hour
      */
-    public function getRemainingBudget(int $userId): float
+    public function getRemainingBudget($userId)
     {
-        $spent = $this->getCurrentHourSpending($userId);
-        $remaining = self::HOURLY_LIMIT - $spent;
-
-        return max(0, $remaining);
+        $limit = $this->getCurrentHourLimit($userId);
+        return max(0, $this->maxPerHour - $limit->amount_spent);
     }
 
     /**
-     * Erfasse Ausgabe
+     * Get or create spending limit for current hour
      */
-    public function recordSpending(int $userId, float $amount): bool
+    private function getCurrentHourLimit($userId)
     {
-        try {
-            $hourSlot = $this->getCurrentHourSlot();
-
-            SpendingLimit::updateOrCreate(
-                [
-                    'user_id' => $userId,
-                    'hour_slot' => $hourSlot,
-                ],
-                [
-                    'amount_spent' => DB::raw("amount_spent + {$amount}"),
-                ]
-            );
-
-            return true;
-
-        } catch (\Exception $e) {
-            \Log::error('Record spending failed', [
+        $currentHour = Carbon::now()->startOfHour();
+        
+        return SpendingLimit::firstOrCreate(
+            [
                 'user_id' => $userId,
-                'amount' => $amount,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
+                'hour_slot' => $currentHour
+            ],
+            [
+                'amount_spent' => 0
+            ]
+        );
     }
 
     /**
-     * Hole aktuellen Stunden-Slot (z.B. "2025-10-05 14:00:00")
+     * Get spending history for user
      */
-    private function getCurrentHourSlot(): string
+    public function getSpendingHistory($userId, $days = 7)
     {
-        return Carbon::now()->format('Y-m-d H:00:00');
-    }
-
-    /**
-     * Hole Spending-Statistiken für User
-     */
-    public function getStatistics(int $userId): array
-    {
-        $currentHour = $this->getCurrentHourSpending($userId);
-        $remaining = $this->getRemainingBudget($userId);
-
-        // Ausgaben der letzten 24 Stunden
-        $last24Hours = SpendingLimit::where('user_id', $userId)
-            ->where('hour_slot', '>=', Carbon::now()->subHours(24))
-            ->sum('amount_spent');
-
-        // Ausgaben heute
-        $today = SpendingLimit::where('user_id', $userId)
-            ->whereDate('hour_slot', Carbon::today())
-            ->sum('amount_spent');
-
-        return [
-            'current_hour' => $currentHour,
-            'remaining_hour' => $remaining,
-            'last_24_hours' => (float) $last24Hours,
-            'today' => (float) $today,
-            'limit' => self::HOURLY_LIMIT,
-            'percentage_used' => ($currentHour / self::HOURLY_LIMIT) * 100,
-        ];
-    }
-
-    /**
-     * Bereinige alte Einträge (älter als 30 Tage)
-     */
-    public function cleanup(): int
-    {
-        return SpendingLimit::where('hour_slot', '<', Carbon::now()->subDays(30))
-            ->delete();
+        return SpendingLimit::where('user_id', $userId)
+            ->where('hour_slot', '>=', Carbon::now()->subDays($days))
+            ->orderBy('hour_slot', 'desc')
+            ->get();
     }
 }
