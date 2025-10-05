@@ -150,10 +150,14 @@ class SellerController extends Controller
             ->get();
     }
     
-    // Berechne Statistiken falls Raffle existiert
+    // Berechne ALLE Statistiken falls Raffle existiert
     $stats = null;
     if ($product->raffle) {
         $raffle = $product->raffle;
+        $endsAt = \Carbon\Carbon::parse($raffle->ends_at);
+        $now = now();
+        $daysRemaining = $endsAt->diffInDays($now, false) * -1;
+        
         $stats = [
             'progress_percentage' => $raffle->total_target > 0 
                 ? ($raffle->total_revenue / $raffle->total_target) * 100 
@@ -162,6 +166,9 @@ class SellerController extends Controller
             'total_revenue' => $raffle->total_revenue,
             'total_target' => $raffle->total_target,
             'unique_participants' => $raffle->unique_participants,
+            'days_remaining' => $daysRemaining,
+            'target_reached' => $raffle->target_reached,
+            'status' => $raffle->status,
         ];
     }
     
