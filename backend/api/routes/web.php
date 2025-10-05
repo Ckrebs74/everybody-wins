@@ -68,20 +68,7 @@ Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(
     // Analytics
     Route::get('/analytics', [SellerController::class, 'analytics'])->name('analytics');
 
-    <?php
-
-// routes/web.php
-
-use App\Http\Controllers\SellerController;
-use Illuminate\Support\Facades\Route;
-
-// ... Existing routes ...
-
-/**
- * SELLER ROUTES - Multi-Step Produkterstellung
- * Middleware: auth + seller role
- */
-Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.products.')->group(function () {
+    Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.products.')->group(function () {
     
     // SCHRITT 1: Kategorie & Typ auswählen
     Route::get('/create', [SellerController::class, 'create'])
