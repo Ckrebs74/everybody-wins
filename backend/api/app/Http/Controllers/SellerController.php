@@ -22,12 +22,10 @@ use Illuminate\Support\Facades\Auth;
 class SellerController extends Controller
 {
     public function __construct(
-        private ProductCreationService $productService,
-        private MediaUploadService $mediaService,
-        private PriceSuggestionService $priceService
-    ) {
-        $this->middleware(['auth', 'seller']);
-    }
+    private ProductCreationService $productService,
+    private MediaUploadService $mediaService,
+    private PriceSuggestionService $priceService
+) {}
     
     /**
      * DASHBOARD - Verkäufer-Übersicht
