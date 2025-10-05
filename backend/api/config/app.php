@@ -123,6 +123,6 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
-    
+    'max_spending_per_hour' => env('MAX_SPENDING_PER_HOUR', 10),
 
 ];

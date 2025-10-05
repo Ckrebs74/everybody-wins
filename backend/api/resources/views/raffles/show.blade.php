@@ -4,9 +4,25 @@
 @php
     // Lade die Bilder mit der funktionierenden Methode
     $productImages = $product->images()->get();
+    
+    // Berechne verfügbares Budget (10€ Limit pro Stunde)
+    $maxSpendingPerHour = 10; // Gesetzliches Limit
+    $currentHourSpending = 0; // TODO: Aus der Datenbank laden für eingeloggten User
+    $remainingBudget = $maxSpendingPerHour - $currentHourSpending;
 @endphp
 
 <div class="container mx-auto px-4 py-8">
+    {{-- Ausgabenlimit Warnung --}}
+    @if($remainingBudget < 10)
+        <div class="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-4 mb-6">
+            <p class="text-yellow-800 font-semibold">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                Hinweis: Sie können in dieser Stunde noch maximal {{ number_format($remainingBudget, 2, ',', '.') }} € ausgeben.
+                <span class="text-sm block mt-1">Gesetzliches Ausgabenlimit: 10€/Stunde</span>
+            </p>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {{-- Image Gallery Section --}}
@@ -119,21 +135,36 @@
             <div class="bg-white border rounded-lg p-6 mb-6">
                 <h3 class="font-bold text-lg mb-4">🎟️ Lose kaufen</h3>
                 
+                {{-- Spending Limit Info --}}
+                <div class="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+                    <p class="text-sm text-blue-800">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Maximales Ausgabenlimit: <strong>10€ pro Stunde</strong> (Spielerschutz)
+                    </p>
+                    @if($remainingBudget < 10)
+                        <p class="text-sm text-blue-600 mt-1">
+                            Verbleibendes Budget diese Stunde: <strong>{{ number_format($remainingBudget, 2, ',', '.') }} €</strong>
+                        </p>
+                    @endif
+                </div>
+                
                 <div class="mb-4">
                     <label class="block text-sm font-medium mb-2">Anzahl Lose (je 1€)</label>
                     <div class="flex items-center gap-2">
                         <button onclick="decreaseQuantity()" 
-                                class="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold">-</button>
-                        <input type="number" id="ticketQuantity" value="1" min="1" max="100" 
-                               class="w-20 text-center border rounded-lg px-2 py-1">
+                                class="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors">-</button>
+                        <input type="number" id="ticketQuantity" value="1" min="1" max="{{ min(10, $remainingBudget) }}" 
+                               class="w-20 text-center border rounded-lg px-2 py-1"
+                               onchange="validateQuantity()">
                         <button onclick="increaseQuantity()" 
-                                class="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold">+</button>
+                                class="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors">+</button>
                         
                         {{-- Quick select buttons --}}
-                        <button onclick="setQuantity(5)" class="ml-4 px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">5</button>
-                        <button onclick="setQuantity(10)" class="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">10</button>
-                        <button onclick="setQuantity(20)" class="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">20</button>
+                        <button onclick="setQuantity(5)" class="ml-4 px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 transition-colors {{ $remainingBudget < 5 ? 'opacity-50 cursor-not-allowed' : '' }}" {{ $remainingBudget < 5 ? 'disabled' : '' }}>5</button>
+                        <button onclick="setQuantity(10)" class="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 transition-colors {{ $remainingBudget < 10 ? 'opacity-50 cursor-not-allowed' : '' }}" {{ $remainingBudget < 10 ? 'disabled' : '' }}>10</button>
+                        <button onclick="setQuantity(20)" class="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 transition-colors opacity-50 cursor-not-allowed" disabled title="Maximum 10€/Stunde">20</button>
                     </div>
+                    <p class="text-xs text-gray-500 mt-2">Max. {{ min(10, $remainingBudget) }} Lose möglich (Ausgabenlimit)</p>
                 </div>
                 
                 <div class="flex items-center justify-between mb-4">
@@ -141,7 +172,7 @@
                     <span class="text-2xl font-bold text-green-600" id="totalPrice">1,00 €</span>
                 </div>
                 
-                <button class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-lg text-lg transition-colors">
+                <button id="buyButton" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-lg text-lg transition-colors">
                     <i class="fas fa-ticket-alt mr-2"></i>
                     Jetzt Lose kaufen
                 </button>
@@ -215,62 +246,117 @@
         </div>
     @endif
 </div>
+@endsection
 
 @push('scripts')
 <script>
-    const productImages = @json($productImages->pluck('image_path'));
-    let currentImageIndex = 0;
+    // Maximales Ausgabenlimit pro Stunde
+    const MAX_SPENDING_PER_HOUR = 10;
+    const remainingBudget = {{ $remainingBudget }};
+    const maxTickets = Math.min(MAX_SPENDING_PER_HOUR, remainingBudget);
     
-    function selectImage(index) {
-        currentImageIndex = index;
-        document.getElementById('mainImage').src = productImages[index];
+    // Bildergalerie-Funktionen
+    @if($productImages->count() > 0)
+        const productImages = @json($productImages->pluck('image_path'));
+        let currentImageIndex = 0;
         
-        // Update thumbnail borders
-        document.querySelectorAll('.grid.grid-cols-4 img').forEach((img, i) => {
-            if(i === index) {
-                img.classList.add('border-yellow-500');
-                img.classList.remove('border-transparent');
-            } else {
-                img.classList.remove('border-yellow-500');
-                img.classList.add('border-transparent');
-            }
-        });
-    }
+        function selectImage(index) {
+            currentImageIndex = index;
+            document.getElementById('mainImage').src = productImages[index];
+            
+            // Update thumbnail borders
+            document.querySelectorAll('.grid.grid-cols-4 img').forEach((img, i) => {
+                if(i === index) {
+                    img.classList.add('border-yellow-500');
+                    img.classList.remove('border-transparent');
+                } else {
+                    img.classList.remove('border-yellow-500');
+                    img.classList.add('border-transparent');
+                }
+            });
+        }
+        
+        function nextImage() {
+            currentImageIndex = (currentImageIndex + 1) % productImages.length;
+            selectImage(currentImageIndex);
+        }
+        
+        function previousImage() {
+            currentImageIndex = (currentImageIndex - 1 + productImages.length) % productImages.length;
+            selectImage(currentImageIndex);
+        }
+    @endif
     
-    function nextImage() {
-        currentImageIndex = (currentImageIndex + 1) % productImages.length;
-        selectImage(currentImageIndex);
-    }
-    
-    function previousImage() {
-        currentImageIndex = (currentImageIndex - 1 + productImages.length) % productImages.length;
-        selectImage(currentImageIndex);
-    }
-    
-    // Ticket quantity functions
+    // Ticket-Mengen-Funktionen
     function updatePrice() {
         const quantity = parseInt(document.getElementById('ticketQuantity').value) || 1;
-        document.getElementById('totalPrice').textContent = quantity.toFixed(2).replace('.', ',') + ' €';
+        const formattedPrice = quantity.toFixed(2).replace('.', ',');
+        document.getElementById('totalPrice').textContent = formattedPrice + ' €';
+        
+        // Button aktivieren/deaktivieren basierend auf Budget
+        const buyButton = document.getElementById('buyButton');
+        if (quantity > maxTickets) {
+            buyButton.disabled = true;
+            buyButton.classList.add('opacity-50', 'cursor-not-allowed');
+            buyButton.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>Ausgabenlimit überschritten';
+        } else {
+            buyButton.disabled = false;
+            buyButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            buyButton.innerHTML = '<i class="fas fa-ticket-alt mr-2"></i>Jetzt Lose kaufen';
+        }
     }
     
     function increaseQuantity() {
         const input = document.getElementById('ticketQuantity');
-        input.value = Math.min(parseInt(input.value) + 1, 100);
+        const currentValue = parseInt(input.value) || 1;
+        const newValue = Math.min(currentValue + 1, maxTickets);
+        input.value = newValue;
         updatePrice();
     }
     
     function decreaseQuantity() {
         const input = document.getElementById('ticketQuantity');
-        input.value = Math.max(parseInt(input.value) - 1, 1);
+        const currentValue = parseInt(input.value) || 1;
+        const newValue = Math.max(currentValue - 1, 1);
+        input.value = newValue;
         updatePrice();
     }
     
     function setQuantity(qty) {
-        document.getElementById('ticketQuantity').value = qty;
+        const input = document.getElementById('ticketQuantity');
+        const validQuantity = Math.min(qty, maxTickets);
+        input.value = validQuantity;
         updatePrice();
     }
     
-    document.getElementById('ticketQuantity').addEventListener('input', updatePrice);
+    function validateQuantity() {
+        const input = document.getElementById('ticketQuantity');
+        const value = parseInt(input.value) || 1;
+        
+        // Begrenze auf Maximum
+        if (value > maxTickets) {
+            input.value = maxTickets;
+            alert('Maximales Ausgabenlimit: ' + maxTickets + '€ pro Stunde');
+        }
+        
+        // Minimum ist 1
+        if (value < 1) {
+            input.value = 1;
+        }
+        
+        updatePrice();
+    }
+    
+    // Event Listener für manuelle Eingabe
+    document.addEventListener('DOMContentLoaded', function() {
+        const input = document.getElementById('ticketQuantity');
+        if (input) {
+            input.addEventListener('input', validateQuantity);
+            input.addEventListener('change', validateQuantity);
+            
+            // Initiale Preisanzeige
+            updatePrice();
+        }
+    });
 </script>
 @endpush
-@endsection
