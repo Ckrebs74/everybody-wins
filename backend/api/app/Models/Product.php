@@ -69,4 +69,45 @@ class Product extends Model
     {
         return $this->hasOne(ProductImage::class)->where('is_primary', true);
     }
+
+    /**
+     * Beziehung zu Media
+     */
+    public function media()
+    {
+        return $this->hasMany(Media::class)->orderBy('position');
+    }
+
+    /**
+     * Beziehung zum primären Bild
+     */
+    public function primaryMedia()
+    {
+        return $this->hasOne(Media::class)->where('is_primary', true);
+    }
+
+    /**
+     * Nur Bilder
+     */
+    public function images()
+    {
+        return $this->hasMany(Media::class)->where('media_type', 'image')->orderBy('position');
+    }
+
+    /**
+     * Nur Videos
+     */
+    public function videos()
+    {
+        return $this->hasMany(Media::class)->where('media_type', 'video')->orderBy('position');
+    }
+
+    /**
+     * Accessor für primäres Bild URL
+     */
+    public function getPrimaryImageUrlAttribute(): ?string
+    {
+        $primaryMedia = $this->primaryMedia;
+        return $primaryMedia ? $primaryMedia->url : null;
+    }
 }
