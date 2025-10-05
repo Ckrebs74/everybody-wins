@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'seller_id',
         'category_id',
@@ -22,123 +22,65 @@ class Product extends Model
         'decision_type',
         'status',
         'slug',
-        'images',
         'view_count'
     ];
 
     protected $casts = [
         'retail_price' => 'decimal:2',
         'target_price' => 'decimal:2',
-        'images' => 'array',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime'
+        'view_count' => 'integer',
+        'images' => 'array'  // Für die alte JSON-Spalte, falls noch verwendet
     ];
 
-    // Relationships
-    public function seller()
-    {
-        return $this->belongsTo(User::class, 'seller_id');
-    }
-
-    public function category()
-    {
-        return $this->belongsTo(Category::class);
-    }
-
-    // WICHTIG: Products haben eine Raffle, nicht direkt Tickets!
-    public function raffle()
-    {
-        return $this->hasOne(Raffle::class);
-    }
-
-    // Tickets über Raffle erreichen
-    public function tickets()
-    {
-        return $this->hasManyThrough(Ticket::class, Raffle::class);
-    }
-
-    public function images()
+    /**
+     * Get the images for the product.
+     * WICHTIG: Diese Relationship lädt die Bilder aus der product_images Tabelle
+     */
+    public function images(): HasMany
     {
         return $this->hasMany(ProductImage::class)->orderBy('sort_order');
     }
 
-    public function primaryImage()
+    /**
+     * Get the primary image for the product.
+     */
+    public function primaryImage(): HasOne
     {
         return $this->hasOne(ProductImage::class)->where('is_primary', true);
     }
 
-    // Accessors
-    public function getPrimaryImageUrlAttribute()
+    /**
+     * Get the seller (user) who owns the product.
+     */
+    public function seller(): BelongsTo
     {
-        $primary = $this->primaryImage()->first();
-        if ($primary) {
-            return $primary->image_path;
-        }
-        
-        $firstImage = $this->images()->first();
-        if ($firstImage) {
-            return $firstImage->image_path;
-        }
-        
-        return 'https://via.placeholder.com/300x300/FFD700/333333?text=' . urlencode($this->title);
+        return $this->belongsTo(User::class, 'seller_id');
     }
 
-    public function getTicketsSoldAttribute()
+    /**
+     * Get the category of the product.
+     */
+    public function category(): BelongsTo
     {
-        // Tickets über die Raffle zählen
-        if ($this->raffle) {
-            return $this->raffle->tickets_sold;
-        }
-        return 0;
+        return $this->belongsTo(Category::class);
     }
 
-    public function getProgressPercentageAttribute()
+    /**
+     * Get the raffle for the product.
+     */
+    public function raffle(): HasOne
     {
-        if (!$this->target_price || $this->target_price <= 0) return 0;
-        
-        // Nutze die Raffle-Daten
-        if ($this->raffle) {
-            $progress = ($this->raffle->total_revenue / $this->raffle->total_target) * 100;
-            return min(100, round($progress, 2));
-        }
-        return 0;
+        return $this->hasOne(Raffle::class);
     }
 
-    public function getTicketPriceAttribute()
-    {
-        // Standard-Ticketpreis ist 1€ (oder aus Raffle)
-        return 1.00;
-    }
-
-    // Scopes
-    public function scopeActive($query)
-    {
-        return $query->where('status', 'active');
-    }
-
-    public function scopePending($query)
-    {
-        return $query->where('status', 'pending');
-    }
-
-    // Methods
-    public function isActive()
-    {
-        return $this->status === 'active';
-    }
-
-    public function canBePurchased()
-    {
-        return $this->isActive() && $this->raffle && $this->raffle->status === 'active';
-    }
-
+    /**
+     * Get remaining tickets
+     */
     public function getRemainingTickets()
     {
-        if (!$this->raffle || !$this->target_price) return 0;
-        
-        $totalNeeded = $this->raffle->total_target;
-        $totalSold = $this->raffle->total_revenue;
-        
-        return max(0, $totalNeeded - $totalSold);
+        if (!$this->raffle) {
+            return 0;
+        }
+        return $this->raffle->total_target - $this->raffle->tickets_sold;
     }
 }
