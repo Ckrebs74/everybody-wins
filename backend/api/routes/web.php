@@ -67,6 +67,71 @@ Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(
     
     // Analytics
     Route::get('/analytics', [SellerController::class, 'analytics'])->name('analytics');
+
+    <?php
+
+// routes/web.php
+
+use App\Http\Controllers\SellerController;
+use Illuminate\Support\Facades\Route;
+
+// ... Existing routes ...
+
+/**
+ * SELLER ROUTES - Multi-Step Produkterstellung
+ * Middleware: auth + seller role
+ */
+Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.products.')->group(function () {
+    
+    // SCHRITT 1: Kategorie & Typ auswählen
+    Route::get('/create', [SellerController::class, 'create'])
+        ->name('create');
+    
+    Route::post('/create/step1', [SellerController::class, 'storeStep1'])
+        ->name('create.step1');
+    
+    // SCHRITT 2-5: Weitere Schritte anzeigen
+    Route::get('/create/step/{step}', [SellerController::class, 'showStep'])
+        ->where('step', '[2-5]')
+        ->name('create.step');
+    
+    // SCHRITT 2: Produktdetails speichern
+    Route::post('/create/step2', [SellerController::class, 'storeStep2'])
+        ->name('create.step2');
+    
+    // SCHRITT 3: Media-Upload (mit erhöhtem Rate Limit)
+    Route::post('/create/step3', [SellerController::class, 'storeStep3'])
+        ->middleware('throttle:20,1') // 20 Requests pro Minute für Uploads
+        ->name('create.step3');
+    
+    // SCHRITT 4: Preisgestaltung speichern
+    Route::post('/create/step4', [SellerController::class, 'storeStep4'])
+        ->name('create.step4');
+    
+    // SCHRITT 5: Veröffentlichen
+    Route::post('/create/step5', [SellerController::class, 'storeStep5'])
+        ->name('create.step5');
+    
+    // AJAX ENDPOINTS
+    
+    // Auto-Save (alle 30 Sekunden)
+    Route::post('/auto-save', [SellerController::class, 'autoSave'])
+        ->middleware('throttle:60,1') // 60 Requests pro Minute
+        ->name('auto-save');
+    
+    // KI-Preisempfehlung
+    Route::post('/suggest-price', [SellerController::class, 'suggestPrice'])
+        ->middleware('throttle:30,1')
+        ->name('suggest-price');
+    
+    // Medium löschen
+    Route::delete('/media/{id}', [SellerController::class, 'deleteMedia'])
+        ->name('delete-media');
+    
+    // Medien sortieren
+    Route::post('/media/reorder', [SellerController::class, 'reorderMedia'])
+        ->name('reorder-media');
+});
     
     // Später: Produkterstellung
     // Route::get('/products/create', [SellerController::class, 'create'])->name('products.create');
