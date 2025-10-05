@@ -3,26 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\Raffle;
 use App\Models\Category;
-use App\Services\SpendingLimitService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class RaffleController extends Controller
 {
-    protected $spendingLimitService;
-
-    public function __construct(SpendingLimitService $spendingLimitService)
-    {
-        $this->spendingLimitService = $spendingLimitService;
-    }
-
     /**
      * Display a listing of all active raffles
      */
     public function index(Request $request)
     {
-        // Lade 'images' mit allen anderen Relationships
+        // Lade Products mit ihren Raffles und Bildern
         $query = Product::with(['category', 'images', 'raffle', 'seller'])
             ->whereHas('raffle', function($q) {
                 $q->where('status', 'active');
@@ -34,7 +26,7 @@ class RaffleController extends Controller
             $query->where('category_id', $request->category);
         }
 
-        // Search filter
+        // Search
         if ($request->has('search') && !empty($request->search)) {
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
@@ -44,9 +36,13 @@ class RaffleController extends Controller
             });
         }
 
-        // Sort
-        $sortBy = $request->get('sort', 'newest');
-        switch ($sortBy) {
+        // Sorting
+        switch ($request->input('sort', 'newest')) {
+            case 'ending_soon':
+                $query->join('raffles', 'products.id', '=', 'raffles.product_id')
+                      ->orderBy('raffles.ends_at', 'asc')
+                      ->select('products.*');
+                break;
             case 'price_low':
                 $query->orderBy('target_price', 'asc');
                 break;
@@ -56,60 +52,80 @@ class RaffleController extends Controller
             case 'popular':
                 $query->orderBy('view_count', 'desc');
                 break;
-            default:
+            default: // newest
                 $query->orderBy('created_at', 'desc');
         }
 
         $products = $query->paginate(12);
-        $categories = Category::where('is_active', true)->orderBy('sort_order')->get();
+
+        // Categories mit Produkt-Count
+        $categories = Category::withCount(['products' => function($q) {
+            $q->whereHas('raffle', function($raffle) {
+                $raffle->where('status', 'active');
+            })->where('status', 'active');
+        }])->where('is_active', true)->get();
 
         return view('raffles.index', compact('products', 'categories'));
     }
 
     /**
-     * Display the specified raffle
+     * Display the specified raffle (via Product Slug)
      */
-    public function show($id)
+    public function show($slug)
     {
-        $product = Product::with(['images', 'category', 'seller', 'raffle.tickets'])
-            ->findOrFail($id);
+        // Lade Product mit Slug
+        $product = Product::with(['category', 'images', 'seller', 'raffle', 'raffle.tickets'])
+            ->where('slug', $slug)
+            ->firstOrFail();
+        
+        $raffle = $product->raffle;
+        
+        // Prüfe ob Raffle existiert
+        if (!$raffle) {
+            abort(404, 'Keine aktive Verlosung für dieses Produkt gefunden');
+        }
 
-        // Increment view count
+        // View Counter erhöhen
         $product->increment('view_count');
 
-        // Get related products
-        $relatedProducts = Product::with(['images', 'raffle'])
+        // Statistiken für die Anzeige
+        $stats = [
+            'tickets_sold' => $raffle->tickets_sold,
+            'total_revenue' => $raffle->total_revenue,
+            'unique_participants' => $raffle->unique_participants,
+            'progress_percentage' => ($raffle->total_target > 0) 
+                ? round(($raffle->total_revenue / $raffle->total_target) * 100, 2) 
+                : 0,
+            'target_reached' => $raffle->target_reached,
+            'days_remaining' => now()->diffInDays($raffle->ends_at, false),
+        ];
+
+        // Ähnliche Produkte (gleiche Kategorie)
+        $relatedProducts = Product::with(['category', 'images', 'raffle'])
             ->where('category_id', $product->category_id)
             ->where('id', '!=', $product->id)
             ->where('status', 'active')
-            ->limit(4)
+            ->whereHas('raffle', function($q) {
+                $q->where('status', 'active');
+            })
+            ->inRandomOrder()
+            ->take(4)
             ->get();
 
-        // Berechne verfügbares Budget für eingeloggten User
-        $remainingBudget = 10; // Standard für nicht eingeloggte User
-        $currentHourSpending = 0;
-        
-        if (Auth::check()) {
-            $remainingBudget = $this->spendingLimitService->getRemainingBudget(Auth::id());
-            $currentHourSpending = 10 - $remainingBudget;
-        }
+        // Letzte Teilnehmer (anonymisiert)
+        $recentParticipants = $raffle->tickets()
+            ->with('user')
+            ->orderBy('purchased_at', 'desc')
+            ->take(10)
+            ->get()
+            ->map(function($ticket) {
+                $email = $ticket->user->email;
+                return [
+                    'email' => substr($email, 0, 3) . '***' . substr($email, -8),
+                    'time' => $ticket->purchased_at->diffForHumans()
+                ];
+            });
 
-        // Raffle Statistiken
-        $raffle = $product->raffle;
-        $ticketsSold = $raffle->tickets_sold;
-        $totalTarget = $raffle->total_target;
-        $currentRevenue = $ticketsSold * 1; // Jedes Los kostet 1€
-        $progressPercentage = $totalTarget > 0 ? ($currentRevenue / $totalTarget) * 100 : 0;
-
-        return view('raffles.show', compact(
-            'product', 
-            'relatedProducts', 
-            'remainingBudget', 
-            'currentHourSpending',
-            'ticketsSold',
-            'totalTarget',
-            'currentRevenue',
-            'progressPercentage'
-        ));
+        return view('raffles.show', compact('product', 'raffle', 'stats', 'relatedProducts', 'recentParticipants'));
     }
 }

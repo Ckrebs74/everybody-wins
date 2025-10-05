@@ -139,7 +139,7 @@ class SellerController extends Controller
     {
         $user = Auth::user();
         
-        $product = Product::with(['category', 'images', 'raffle', 'raffle.tickets'])
+        $product = Product::with(['category', 'images', 'raffle', 'raffle.tickets.user'])
             ->where('seller_id', $user->id)
             ->findOrFail($id);
             

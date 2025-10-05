@@ -41,18 +41,19 @@ Route::middleware('auth')->group(function () {
     Route::middleware('auth')->group(function () {
         Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
         Route::post('/wallet/deposit', [WalletController::class, 'deposit'])->name('wallet.deposit');
-        Route::get('/wallet/deposit/success', [WalletController::class, 'depositSuccess'])->name('wallet.deposit.success');  // NEU
+        Route::get('/wallet/deposit/success', [WalletController::class, 'depositSuccess'])->name('wallet.deposit.success');
         Route::get('/wallet/withdraw', [WalletController::class, 'showWithdraw'])->name('wallet.withdraw');
         Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw.post');
     });
+    
     // Tickets
     Route::post('/raffles/{raffle}/buy', [TicketController::class, 'purchase'])->name('tickets.purchase');
     Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.index');
 });
 
-// Public Raffle Routes
+// Public Raffle Routes - WICHTIG: Slug statt ID!
 Route::get('/raffles', [RaffleController::class, 'index'])->name('raffles.index');
-Route::get('/raffles/{raffle}', [RaffleController::class, 'show'])->name('raffles.show');
+Route::get('/raffles/{slug}', [RaffleController::class, 'show'])->name('raffles.show');
 
 // Verkäufer-Bereich (nur für Verkäufer und Admins)
 Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(function () {
