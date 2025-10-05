@@ -1,22 +1,25 @@
 <?php
-// =====================================================
-// FILE: routes/web.php
-// =====================================================
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
-// Homepage
+// =====================================================
+// Homepage - MIT korrekter Bildladung wie bei /raffles
+// =====================================================
 Route::get('/', function () {
+    // Lade Raffles mit Product UND dessen Images (wie in RaffleController)
     $activeRaffles = \App\Models\Raffle::with([
         'product',
-        'product.images'  // <-- NUR DIESE ZEILE HINZUFÜGEN
+        'product.seller',
+        'product.images'  // <-- Wichtig: Nested eager loading
     ])
         ->where('status', 'active')
         ->limit(6)
         ->get();
+    
     return view('welcome', compact('activeRaffles'));
 })->name('home');
 
@@ -36,8 +39,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::post('/deposit', [DashboardController::class, 'deposit'])->name('deposit');
     
-    // Raffles
-    Route::post('/raffles/{raffle}/buy-ticket', [RaffleController::class, 'buyTicket'])
+    // Tickets kaufen
+    Route::post('/raffles/{raffle}/buy-ticket', [TicketController::class, 'purchase'])
         ->name('raffles.buy-ticket');
 });
 

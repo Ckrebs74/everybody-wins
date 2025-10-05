@@ -22,23 +22,63 @@
     
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         @foreach($activeRaffles as $raffle)
-            <div class="bg-white rounded-lg shadow-lg p-6">
-                <h3 class="font-bold text-xl mb-2">{{ $raffle->product->title }}</h3>
-                <p class="text-gray-600 mb-4">{{ Str::limit($raffle->product->description, 100) }}</p>
-                <div class="mb-4">
-                    <div class="bg-gray-200 rounded-full h-4">
-                        <div class="bg-yellow-500 h-4 rounded-full" 
-                             style="width: {{ min(100, ($raffle->total_revenue / $raffle->total_target) * 100) }}%">
-                        </div>
+            <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                
+                {{-- BILDANZEIGE - Genau wie auf /raffles --}}
+                <a href="/raffles/{{ $raffle->id }}">
+                    <div class="relative h-48 bg-gray-100">
+                        @php
+                            // Hole alle Bilder des Produkts
+                            $productImages = $raffle->product->images;
+                            $mainImage = null;
+                            
+                            // Versuche Primärbild zu finden
+                            if ($productImages && $productImages->count() > 0) {
+                                $mainImage = $productImages->where('is_primary', true)->first();
+                                // Falls kein Primärbild, nimm das erste
+                                if (!$mainImage) {
+                                    $mainImage = $productImages->first();
+                                }
+                            }
+                        @endphp
+                        
+                        @if($mainImage)
+                            <img src="{{ $mainImage->image_path }}" 
+                                 alt="{{ $mainImage->alt_text ?? $raffle->product->title }}"
+                                 class="w-full h-full object-cover">
+                        @else
+                            {{-- Fallback nur wenn wirklich kein Bild vorhanden --}}
+                            <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-yellow-400 to-yellow-600">
+                                <span class="text-white text-5xl font-bold">
+                                    {{ substr($raffle->product->title, 0, 1) }}
+                                </span>
+                            </div>
+                        @endif
                     </div>
-                    <p class="text-sm text-gray-600 mt-2">
-                        {{ $raffle->tickets_sold }} Lose verkauft | 
-                        Ziel: {{ $raffle->total_target }}€
-                    </p>
-                </div>
-                <a href="/raffles/{{ $raffle->id }}" class="bg-yellow-500 text-gray-800 px-4 py-2 rounded block text-center hover:bg-yellow-400">
-                    Jetzt mitmachen - nur 1€!
                 </a>
+                
+                {{-- Produktinfo --}}
+                <div class="p-6">
+                    <h3 class="font-bold text-xl mb-2">{{ $raffle->product->title }}</h3>
+                    <p class="text-gray-600 mb-4">{{ Str::limit($raffle->product->description, 100) }}</p>
+                    
+                    <div class="mb-4">
+                        <div class="bg-gray-200 rounded-full h-4">
+                            <div class="bg-yellow-500 h-4 rounded-full" 
+                                 style="width: {{ min(100, ($raffle->total_revenue / $raffle->total_target) * 100) }}%">
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-600 mt-2">
+                            {{ $raffle->tickets_sold }} Lose verkauft | 
+                            Ziel: {{ number_format($raffle->total_target, 0, ',', '.') }}€
+                        </p>
+                    </div>
+                    
+                    <a href="/raffles/{{ $raffle->id }}" 
+                       class="bg-yellow-500 text-gray-800 px-4 py-2 rounded block text-center hover:bg-yellow-400 font-semibold">
+                        Jetzt mitmachen - nur 1€!
+                    </a>
+                </div>
             </div>
         @endforeach
     </div>
