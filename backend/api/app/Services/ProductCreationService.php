@@ -145,9 +145,16 @@ class ProductCreationService
             $totalTarget = round($targetPrice / 0.7, 2);
             $platformFee = round($totalTarget * 0.3, 2);
             
-            // 4. Update Product Status
+            // 4. Update Product Status UND Slug
             $status = ($startsAt > now()) ? 'scheduled' : 'active';
-            $product->update(['status' => $status]);
+            
+            // Generiere finalen Slug wenn noch Draft-Slug vorhanden
+            $updateData = ['status' => $status];
+            if (str_starts_with($product->slug, 'entwurf-')) {
+                $updateData['slug'] = $this->generateUniqueSlug($product->title);
+            }
+            
+            $product->update($updateData);
             
             // 5. Erstelle Raffle
             $raffle = Raffle::create([
