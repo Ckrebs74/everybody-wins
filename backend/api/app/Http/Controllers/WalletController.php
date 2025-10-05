@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Transaction;
-use App\Services\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Transaction;
+use App\Services\WalletService;
 
 class WalletController extends Controller
 {
@@ -13,100 +13,115 @@ class WalletController extends Controller
 
     public function __construct(WalletService $walletService)
     {
-        $this->middleware('auth');
+        // Middleware wird in routes/web.php definiert
         $this->walletService = $walletService;
     }
 
     /**
-     * Wallet-Übersicht
+     * Display wallet overview
      */
     public function index()
     {
         $user = Auth::user();
         
-        // Balance
-        $balance = $this->walletService->getBalance($user->id);
-
-        // Transaktionen
+        // Get transaction history
         $transactions = Transaction::where('user_id', $user->id)
+            ->with('product')
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        // Statistiken
+        // Wallet stats
         $stats = [
-            'total_deposited' => $user->total_deposited ?? 0,
-            'total_spent' => $user->total_spent ?? 0,
-            'total_withdrawn' => $user->total_withdrawn ?? 0,
-            'current_balance' => $balance,
+            'balance' => $user->wallet_balance,
+            'total_deposited' => $user->total_deposited,
+            'total_spent' => $user->total_spent,
+            'total_withdrawn' => $user->total_withdrawn,
         ];
 
-        return view('wallet.index', compact('user', 'balance', 'transactions', 'stats'));
+        return view('wallet.index', compact('user', 'transactions', 'stats'));
     }
 
     /**
-     * Guthaben aufladen (Demo-Mode oder Stripe)
+     * Show deposit form
+     */
+    public function showDeposit()
+    {
+        return view('wallet.deposit');
+    }
+
+    /**
+     * Process deposit via Stripe
      */
     public function deposit(Request $request)
     {
         $request->validate([
             'amount' => 'required|numeric|min:5|max:500',
+        ], [
+            'amount.required' => 'Bitte geben Sie einen Betrag ein.',
+            'amount.numeric' => 'Der Betrag muss eine Zahl sein.',
+            'amount.min' => 'Der Mindestbetrag beträgt 5€.',
+            'amount.max' => 'Der Höchstbetrag beträgt 500€.',
         ]);
 
-        $amount = $request->amount;
-        $user = Auth::user();
-
-        // DEMO-MODE: Sofort gutschreiben
+        // Demo Mode: Directly add balance
         if (config('app.demo_mode', true)) {
-            $success = $this->walletService->addFunds($user->id, $amount, [
-                'payment_method' => 'demo',
-                'note' => 'Demo-Aufladung (Test-Modus)',
-            ]);
+            try {
+                $this->walletService->addBalance(
+                    Auth::id(),
+                    $request->amount,
+                    null,
+                    'Demo-Einzahlung'
+                );
 
-            if ($success) {
-                return back()->with('success', "✅ Erfolgreich {$amount}€ aufgeladen! (Demo-Mode)");
-            } else {
-                return back()->with('error', 'Fehler beim Aufladen. Bitte versuchen Sie es erneut.');
+                return redirect()->route('wallet.index')
+                    ->with('success', "Erfolgreich {$request->amount}€ eingezahlt (Demo-Modus)!");
+            } catch (\Exception $e) {
+                return back()->with('error', 'Fehler bei der Einzahlung: ' . $e->getMessage());
             }
         }
 
-        // STRIPE-MODE: PaymentIntent erstellen
-        $paymentIntent = $this->walletService->createPaymentIntent($user->id, $amount);
-
-        if ($paymentIntent) {
-            // Weiterleitung zu Stripe Checkout
-            return view('wallet.checkout', [
-                'amount' => $amount,
-                'clientSecret' => $paymentIntent->client_secret,
-                'publishableKey' => config('services.stripe.key'),
-            ]);
-        }
-
-        return back()->with('error', 'Fehler bei der Zahlungsabwicklung.');
+        // Stripe Integration (für Production)
+        // TODO: Stripe Checkout Session erstellen
+        return back()->with('error', 'Stripe-Integration folgt in Kürze.');
     }
 
     /**
-     * Auszahlung beantragen
+     * Show withdrawal form
+     */
+    public function showWithdraw()
+    {
+        $user = Auth::user();
+        return view('wallet.withdraw', compact('user'));
+    }
+
+    /**
+     * Process withdrawal
      */
     public function withdraw(Request $request)
     {
-        $request->validate([
-            'amount' => 'required|numeric|min:10',
-        ]);
-
-        $amount = $request->amount;
         $user = Auth::user();
 
-        // Prüfe Balance
-        if (!$this->walletService->hasBalance($user->id, $amount)) {
-            return back()->with('error', 'Nicht genug Guthaben für diese Auszahlung.');
+        $request->validate([
+            'amount' => 'required|numeric|min:10|max:' . $user->wallet_balance,
+        ], [
+            'amount.required' => 'Bitte geben Sie einen Betrag ein.',
+            'amount.numeric' => 'Der Betrag muss eine Zahl sein.',
+            'amount.min' => 'Der Mindestbetrag für Auszahlungen beträgt 10€.',
+            'amount.max' => 'Sie können maximal Ihr verfügbares Guthaben auszahlen.',
+        ]);
+
+        try {
+            $this->walletService->withdraw(
+                $user->id,
+                $request->amount,
+                'Auszahlung an PayPal/Banküberweisung'
+            );
+
+            return redirect()->route('wallet.index')
+                ->with('success', "Auszahlung von {$request->amount}€ wurde beantragt. Sie erhalten das Geld innerhalb von 2-5 Werktagen.");
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Fehler bei der Auszahlung: ' . $e->getMessage());
         }
-
-        $success = $this->walletService->withdraw($user->id, $amount);
-
-        if ($success) {
-            return back()->with('success', "Auszahlung von {$amount}€ beantragt. Sie erhalten das Geld in 3-5 Werktagen.");
-        }
-
-        return back()->with('error', 'Fehler bei der Auszahlung. Bitte kontaktieren Sie den Support.');
     }
 }

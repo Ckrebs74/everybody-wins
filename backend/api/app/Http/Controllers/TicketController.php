@@ -2,169 +2,127 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
 use App\Models\Ticket;
-use App\Models\Raffle;
 use App\Models\Transaction;
 use App\Services\WalletService;
 use App\Services\SpendingLimitService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Stripe\Stripe;
-use Stripe\PaymentIntent;
 
 class TicketController extends Controller
 {
     protected $walletService;
     protected $spendingLimitService;
 
-    public function __construct(WalletService $walletService, SpendingLimitService $spendingLimitService)
-    {
-        $this->middleware('auth');
+    public function __construct(
+        WalletService $walletService,
+        SpendingLimitService $spendingLimitService
+    ) {
+        // Middleware wird in routes/web.php definiert
         $this->walletService = $walletService;
         $this->spendingLimitService = $spendingLimitService;
     }
 
     /**
-     * Ticket-Kauf durchführen
+     * Purchase tickets for a raffle
      */
-    public function purchase(Request $request, $raffleId)
+    public function purchase(Request $request, $productId)
     {
         $request->validate([
             'quantity' => 'required|integer|min:1|max:10',
         ]);
 
         $user = Auth::user();
+        $product = Product::with('raffle')->findOrFail($productId);
         $quantity = $request->quantity;
-        $totalAmount = $quantity * 1.00; // 1€ pro Los
-
-        // Lade Raffle mit Product
-        $raffle = Raffle::with('product')->findOrFail($raffleId);
+        $totalCost = $quantity * 1; // 1€ pro Los
 
         // Validierungen
-        if ($raffle->status !== 'active') {
+        if ($product->raffle->status !== 'active') {
             return back()->with('error', 'Diese Verlosung ist nicht mehr aktiv.');
         }
 
-        if ($raffle->ends_at <= now()) {
-            return back()->with('error', 'Diese Verlosung ist bereits beendet.');
-        }
-
-        // Prüfe ob Seller nicht selbst kaufen kann
-        if ($raffle->product->seller_id === $user->id) {
-            return back()->with('error', 'Sie können nicht an Ihrer eigenen Verlosung teilnehmen.');
-        }
-
-        // Prüfe Spending Limit (10€/Stunde)
-        if (!$this->spendingLimitService->canSpend($user->id, $totalAmount)) {
+        // Spending Limit Check
+        if (!$this->spendingLimitService->canSpend($user->id, $totalCost)) {
             $remaining = $this->spendingLimitService->getRemainingBudget($user->id);
             return back()->with('error', "Ausgabenlimit erreicht! Sie können in dieser Stunde noch {$remaining}€ ausgeben.");
         }
 
-        // Prüfe Wallet-Balance
-        if (!$this->walletService->hasBalance($user->id, $totalAmount)) {
-            $balance = $this->walletService->getBalance($user->id);
-            return back()->with('error', "Nicht genug Guthaben! Aktuelles Guthaben: {$balance}€. Benötigt: {$totalAmount}€");
+        // Wallet Balance Check
+        if ($user->wallet_balance < $totalCost) {
+            return redirect()->route('wallet.index')
+                ->with('error', 'Nicht genug Guthaben. Bitte laden Sie Ihr Wallet auf.');
         }
 
-        DB::beginTransaction();
         try {
-            // Erstelle Tickets
+            DB::beginTransaction();
+
+            // Create tickets
             $tickets = [];
             for ($i = 0; $i < $quantity; $i++) {
-                $ticket = Ticket::create([
-                    'raffle_id' => $raffle->id,
+                $tickets[] = Ticket::create([
                     'user_id' => $user->id,
+                    'product_id' => $product->id,
                     'ticket_number' => $this->generateTicketNumber(),
-                    'price' => 1.00,
-                    'status' => 'valid',
-                    'is_bonus_ticket' => false,
-                    'purchased_at' => now(),
+                    'purchase_price' => 1.00,
+                    'status' => 'active',
                 ]);
-                $tickets[] = $ticket;
             }
 
-            // Wallet abziehen
-            $this->walletService->deductFunds($user->id, $totalAmount, [
-                'type' => 'ticket_purchase',
-                'raffle_id' => $raffle->id,
-                'quantity' => $quantity,
-            ]);
+            // Update wallet
+            $this->walletService->deductBalance($user->id, $totalCost, $product->id, 'ticket_purchase');
 
-            // Spending Limit aktualisieren
-            $this->spendingLimitService->recordSpending($user->id, $totalAmount);
+            // Update spending limit
+            $this->spendingLimitService->addSpending($user->id, $totalCost);
 
-            // Raffle-Statistiken aktualisieren
-            $raffle->increment('tickets_sold', $quantity);
-            $raffle->increment('total_revenue', $totalAmount);
-
-            // Unique Participants erhöhen wenn erster Kauf
-            $existingTickets = Ticket::where('raffle_id', $raffle->id)
-                ->where('user_id', $user->id)
-                ->count();
+            // Update raffle stats
+            $raffle = $product->raffle;
+            $raffle->tickets_sold += $quantity;
+            $raffle->current_amount += $totalCost;
             
-            if ($existingTickets === $quantity) {
-                $raffle->increment('unique_participants');
+            // Check if target reached
+            if ($raffle->current_amount >= $raffle->end_price) {
+                $raffle->status = 'completed';
             }
-
-            // Transaction erstellen
-            Transaction::create([
-                'user_id' => $user->id,
-                'type' => 'ticket_purchase',
-                'amount' => -$totalAmount,
-                'balance_before' => $this->walletService->getBalance($user->id) + $totalAmount,
-                'balance_after' => $this->walletService->getBalance($user->id),
-                'reference_type' => 'raffle',
-                'reference_id' => $raffle->id,
-                'status' => 'completed',
-                'description' => "{$quantity} Los(e) für {$raffle->product->title}",
-                'metadata' => json_encode([
-                    'ticket_numbers' => array_map(fn($t) => $t->ticket_number, $tickets),
-                ]),
-            ]);
+            
+            $raffle->save();
 
             DB::commit();
 
-            return redirect()
-                ->route('raffles.show', $raffle->id)
-                ->with('success', "🎉 Erfolgreich {$quantity} Los(e) gekauft! Viel Glück bei der Verlosung!");
+            return redirect()->route('dashboard')
+                ->with('success', "Erfolgreich {$quantity} Los(e) für {$product->title} gekauft!");
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Ticket purchase failed', [
-                'user_id' => $user->id,
-                'raffle_id' => $raffleId,
-                'quantity' => $quantity,
-                'error' => $e->getMessage(),
-            ]);
-
-            return back()->with('error', 'Fehler beim Ticketkauf. Bitte versuchen Sie es erneut.');
+            
+            return back()->with('error', 'Fehler beim Loskauf: ' . $e->getMessage());
         }
     }
 
     /**
-     * Generiere eindeutige Ticket-Nummer
+     * Generate unique ticket number
      */
-    private function generateTicketNumber(): string
+    private function generateTicketNumber()
     {
         do {
-            $number = 'TK-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
+            $number = 'TKT-' . strtoupper(uniqid());
         } while (Ticket::where('ticket_number', $number)->exists());
 
         return $number;
     }
 
     /**
-     * Zeige User's Tickets
+     * Show user's tickets
      */
-    public function myTickets()
+    public function index()
     {
         $user = Auth::user();
         
-        $tickets = Ticket::with(['raffle.product'])
-            ->where('user_id', $user->id)
-            ->orderBy('purchased_at', 'desc')
+        $tickets = Ticket::where('user_id', $user->id)
+            ->with(['product.images', 'product.raffle'])
+            ->orderBy('created_at', 'desc')
             ->paginate(20);
 
         return view('tickets.index', compact('tickets'));

@@ -1,101 +1,98 @@
 <?php
-// =====================================================
-// FILE: app/Http/Controllers/AuthController.php
-// =====================================================
 
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\Wallet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
     /**
-     * Registrierung neuer User
+     * Handle user registration
      */
     public function register(Request $request)
     {
-        $validated = $request->validate([
-            'email' => 'required|email|unique:users',
-            'password' => ['required', 'confirmed', Password::min(8)],
-            'first_name' => 'required|string|max:100',
-            'last_name' => 'required|string|max:100',
-            'birth_date' => 'required|date|before:-18 years', // Min. 18 Jahre
-            'accept_terms' => 'required|accepted'
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8|confirmed',
+            'terms' => 'accepted',
+        ], [
+            'name.required' => 'Bitte geben Sie Ihren Namen ein.',
+            'email.required' => 'Bitte geben Sie Ihre E-Mail-Adresse ein.',
+            'email.email' => 'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+            'email.unique' => 'Diese E-Mail-Adresse wird bereits verwendet.',
+            'password.required' => 'Bitte geben Sie ein Passwort ein.',
+            'password.min' => 'Das Passwort muss mindestens 8 Zeichen lang sein.',
+            'password.confirmed' => 'Die Passwörter stimmen nicht überein.',
+            'terms.accepted' => 'Bitte akzeptieren Sie die AGB.',
         ]);
 
-        DB::beginTransaction();
-        try {
-            // User erstellen
-            $user = User::create([
-                'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
-                'first_name' => $validated['first_name'],
-                'last_name' => $validated['last_name'],
-                'birth_date' => $validated['birth_date'],
-                'role' => 'buyer',
-                'age_verified' => true, // Da wir birth_date prüfen
-            ]);
-
-            // Wallet erstellen
-            Wallet::create([
-                'user_id' => $user->id,
-                'balance' => 0,
-                'bonus_balance' => 5.00, // 5€ Startguthaben!
-            ]);
-
-            DB::commit();
-
-            // Automatisch einloggen
-            Auth::login($user);
-
-            return redirect()->route('dashboard')
-                ->with('success', 'Willkommen bei Jeder Gewinnt! Du hast 5€ Startguthaben erhalten!');
-
-        } catch (\Exception $e) {
-            DB::rollback();
-            return back()->with('error', 'Registrierung fehlgeschlagen.');
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
         }
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'role' => 'buyer',
+            'wallet_balance' => 0.00,
+            'total_deposited' => 0.00,
+            'total_spent' => 0.00,
+            'total_withdrawn' => 0.00,
+        ]);
+
+        Auth::login($user);
+
+        return redirect()->route('dashboard')
+            ->with('success', 'Willkommen bei Jeder gewinnt! Ihr Konto wurde erfolgreich erstellt.');
     }
 
     /**
-     * Login
+     * Handle user login
      */
     public function login(Request $request)
     {
         $credentials = $request->validate([
             'email' => 'required|email',
-            'password' => 'required'
+            'password' => 'required',
+        ], [
+            'email.required' => 'Bitte geben Sie Ihre E-Mail-Adresse ein.',
+            'email.email' => 'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+            'password.required' => 'Bitte geben Sie Ihr Passwort ein.',
         ]);
 
-        if (Auth::attempt($credentials, $request->boolean('remember'))) {
-            $request->session()->regenerate();
-            
-            // Update last login
-            Auth::user()->update(['last_login_at' => now()]);
+        $remember = $request->has('remember');
 
-            return redirect()->intended('dashboard');
+        if (Auth::attempt($credentials, $remember)) {
+            $request->session()->regenerate();
+
+            return redirect()->intended('dashboard')
+                ->with('success', 'Willkommen zurück, ' . Auth::user()->name . '!');
         }
 
         return back()->withErrors([
-            'email' => 'Die Anmeldedaten sind ungültig.',
-        ])->onlyInput('email');
+            'email' => 'Die eingegebenen Anmeldedaten sind ungültig.',
+        ])->withInput($request->only('email'));
     }
 
     /**
-     * Logout
+     * Handle user logout
      */
     public function logout(Request $request)
     {
         Auth::logout();
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        
-        return redirect('/');
+
+        return redirect('/')
+            ->with('success', 'Sie wurden erfolgreich abgemeldet.');
     }
-}
+}s

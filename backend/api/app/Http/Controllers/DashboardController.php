@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use App\Models\Ticket;
 use App\Models\Transaction;
 use App\Services\SpendingLimitService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
@@ -14,7 +14,7 @@ class DashboardController extends Controller
 
     public function __construct(SpendingLimitService $spendingLimitService)
     {
-        $this->middleware('auth');
+        // MIDDLEWARE ENTFERNT - wird bereits in routes/web.php definiert
         $this->spendingLimitService = $spendingLimitService;
     }
 
@@ -26,78 +26,62 @@ class DashboardController extends Controller
         $user = Auth::user();
 
         // Spending Statistics
-        $spendingStats = $this->spendingLimitService->getStatistics($user->id);
-
-        // Aktive Tickets
-        $activeTickets = Ticket::with(['raffle.product.images'])
-            ->where('user_id', $user->id)
-            ->whereHas('raffle', function($q) {
-                $q->where('status', 'active');
-            })
-            ->orderBy('purchased_at', 'desc')
-            ->limit(5)
-            ->get();
-
-        // Anzahl Tickets pro Status
-        $ticketCounts = [
-            'active' => Ticket::where('user_id', $user->id)
-                ->whereHas('raffle', fn($q) => $q->where('status', 'active'))
+        $remainingBudget = $this->spendingLimitService->getRemainingBudget($user->id);
+        $spentThisHour = 10 - $remainingBudget;
+        
+        // User Statistics
+        $stats = [
+            'wallet_balance' => $user->wallet_balance ?? 0,
+            'total_tickets' => Ticket::where('user_id', $user->id)->count(),
+            'active_raffles' => Ticket::where('user_id', $user->id)
+                ->whereHas('product.raffle', function($query) {
+                    $query->where('status', 'active');
+                })
+                ->distinct('product_id')
                 ->count(),
-            'winner' => Ticket::where('user_id', $user->id)
-                ->where('status', 'winner')
-                ->count(),
-            'total' => Ticket::where('user_id', $user->id)->count(),
+            'total_spent' => $user->total_spent ?? 0,
+            'spent_this_hour' => $spentThisHour,
+            'remaining_budget' => $remainingBudget,
         ];
 
-        // Letzte Transaktionen
+        // Recent Transactions
         $recentTransactions = Transaction::where('user_id', $user->id)
+            ->with('product')
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get();
 
-        // Gewinnchancen berechnen
-        $winningChances = $this->calculateWinningChances($user->id);
+        // Active Tickets
+        $activeTickets = Ticket::where('user_id', $user->id)
+            ->whereHas('product.raffle', function($query) {
+                $query->where('status', 'active');
+            })
+            ->with(['product.images', 'product.raffle'])
+            ->get()
+            ->groupBy('product_id')
+            ->map(function($tickets) {
+                return [
+                    'product' => $tickets->first()->product,
+                    'ticket_count' => $tickets->count(),
+                    'total_spent' => $tickets->count() * 1, // 1€ pro Los
+                    'win_chance' => $this->calculateWinChance($tickets->first()->product, $tickets->count())
+                ];
+            });
 
-        return view('dashboard', compact(
-            'user',
-            'spendingStats',
-            'activeTickets',
-            'ticketCounts',
-            'recentTransactions',
-            'winningChances'
-        ));
+        return view('dashboard', compact('user', 'stats', 'recentTransactions', 'activeTickets'));
     }
 
     /**
-     * Berechne Gewinnchancen für aktive Tickets
+     * Calculate winning chance
      */
-    private function calculateWinningChances(int $userId): array
+    private function calculateWinChance($product, $userTicketCount)
     {
-        $activeTickets = Ticket::with('raffle')
-            ->where('user_id', $userId)
-            ->whereHas('raffle', fn($q) => $q->where('status', 'active'))
-            ->get();
-
-        $chances = [];
-
-        foreach ($activeTickets->groupBy('raffle_id') as $raffleId => $tickets) {
-            $raffle = $tickets->first()->raffle;
-            $userTicketCount = $tickets->count();
-            $totalTickets = $raffle->tickets_sold;
-
-            if ($totalTickets > 0) {
-                $chance = ($userTicketCount / $totalTickets) * 100;
-                
-                $chances[] = [
-                    'raffle_id' => $raffleId,
-                    'product_title' => $raffle->product->title,
-                    'user_tickets' => $userTicketCount,
-                    'total_tickets' => $totalTickets,
-                    'chance_percentage' => round($chance, 2),
-                ];
-            }
+        $totalTickets = Ticket::where('product_id', $product->id)->count();
+        
+        if ($totalTickets === 0) {
+            return 0;
         }
 
-        return $chances;
+        return round(($userTicketCount / $totalTickets) * 100, 2);
     }
 }
