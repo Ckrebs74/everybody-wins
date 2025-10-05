@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\ProductImage;
+use App\Models\Raffle;
 use App\Services\ProductCreationService;
 use App\Services\MediaUploadService;
 use App\Services\PriceSuggestionService;
@@ -27,6 +28,164 @@ class SellerController extends Controller
     ) {
         $this->middleware(['auth', 'seller']);
     }
+    
+    /**
+     * DASHBOARD - Verkäufer-Übersicht
+     * GET /seller/dashboard
+     */
+    public function index()
+    {
+        $user = Auth::user();
+        
+        // Statistiken berechnen
+        $stats = [
+            'active_raffles' => Product::where('seller_id', $user->id)
+                ->whereIn('status', ['active', 'scheduled'])
+                ->count(),
+            
+            'total_revenue' => Raffle::whereHas('product', function($q) use ($user) {
+                $q->where('seller_id', $user->id);
+            })
+            ->where('status', 'completed')
+            ->where('target_reached', true)
+            ->sum('target_price'),
+            
+            'total_tickets' => Raffle::whereHas('product', function($q) use ($user) {
+                $q->where('seller_id', $user->id);
+            })->sum('tickets_sold'),
+            
+            'success_rate' => $this->calculateSuccessRate($user->id),
+        ];
+        
+        // Aktive Produkte mit Raffles und Bildern
+        $activeProducts = Product::where('seller_id', $user->id)
+            ->whereIn('status', ['active', 'scheduled'])
+            ->with(['raffle', 'images' => function($q) {
+                $q->orderBy('sort_order');
+            }])
+            ->latest()
+            ->get();
+        
+        // Entwürfe
+        $draftProducts = Product::where('seller_id', $user->id)
+            ->where('status', 'draft')
+            ->with('images')
+            ->latest()
+            ->get();
+        
+        // Abgeschlossene Produkte
+        $completedProducts = Product::where('seller_id', $user->id)
+            ->where('status', 'completed')
+            ->with(['raffle', 'images' => function($q) {
+                $q->orderBy('sort_order')->limit(1);
+            }])
+            ->latest()
+            ->take(10)
+            ->get();
+        
+        return view('seller.dashboard', compact(
+            'stats',
+            'activeProducts',
+            'draftProducts',
+            'completedProducts'
+        ));
+    }
+    
+    /**
+     * PRODUKTLISTE - Alle Produkte des Verkäufers
+     * GET /seller/products
+     */
+    public function products(Request $request)
+    {
+        $query = Product::where('seller_id', Auth::id())
+            ->with(['category', 'raffle', 'images']);
+        
+        // Filter nach Status
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+        
+        // Suche
+        if ($request->has('search') && $request->search) {
+            $query->where(function($q) use ($request) {
+                $q->where('title', 'like', '%' . $request->search . '%')
+                  ->orWhere('description', 'like', '%' . $request->search . '%');
+            });
+        }
+        
+        // Filter nach Kategorie
+        if ($request->has('category') && $request->category) {
+            $query->where('category_id', $request->category);
+        }
+        
+        // Sortierung
+        $sortBy = $request->get('sort', 'created_at');
+        $sortOrder = $request->get('order', 'desc');
+        $query->orderBy($sortBy, $sortOrder);
+        
+        $products = $query->paginate(12);
+        $categories = Category::where('is_active', true)->get();
+        
+        return view('seller.products.index', compact('products', 'categories'));
+    }
+    
+    /**
+     * PRODUKTDETAILS - Einzelnes Produkt anzeigen
+     * GET /seller/products/{id}
+     */
+    public function show($id)
+    {
+        $product = Product::where('id', $id)
+            ->where('seller_id', Auth::id())
+            ->with(['category', 'raffle', 'images' => function($q) {
+                $q->orderBy('sort_order');
+            }])
+            ->firstOrFail();
+        
+        return view('seller.products.show', compact('product'));
+    }
+    
+    /**
+     * ANALYTICS - Detaillierte Statistiken
+     * GET /seller/analytics
+     */
+    public function analytics()
+    {
+        $user = Auth::user();
+        
+        // Tägliche Einnahmen (letzte 30 Tage)
+        $dailyRevenue = Raffle::whereHas('product', function($q) use ($user) {
+            $q->where('seller_id', $user->id);
+        })
+        ->where('status', 'completed')
+        ->where('created_at', '>=', now()->subDays(30))
+        ->selectRaw('DATE(created_at) as date, SUM(total_revenue) as revenue')
+        ->groupBy('date')
+        ->orderBy('date')
+        ->get();
+        
+        // Top-Kategorien
+        $topCategories = Product::where('seller_id', $user->id)
+            ->selectRaw('category_id, COUNT(*) as count')
+            ->groupBy('category_id')
+            ->with('category')
+            ->orderByDesc('count')
+            ->take(5)
+            ->get();
+        
+        // Weitere Metriken
+        $metrics = [
+            'conversion_rate' => $this->calculateConversionRate($user->id),
+            'avg_tickets_per_raffle' => $this->calculateAvgTicketsPerRaffle($user->id),
+            'success_rate' => $this->calculateSuccessRate($user->id),
+        ];
+        
+        return view('seller.analytics', compact('dailyRevenue', 'topCategories', 'metrics'));
+    }
+    
+    // ============================================
+    // MULTI-STEP PRODUKTERSTELLUNG
+    // ============================================
     
     /**
      * SCHRITT 1: Kategorie & Typ
@@ -69,8 +228,8 @@ class SellerController extends Controller
     }
     
     /**
-     * SCHRITT 2: Produktdetails
-     * GET /seller/products/create/step/2
+     * SCHRITT 2-5: Schritte anzeigen
+     * GET /seller/products/create/step/{step}
      */
     public function showStep(int $step)
     {
@@ -81,7 +240,9 @@ class SellerController extends Controller
                 ->with('error', 'Bitte starten Sie mit Schritt 1');
         }
         
-        $product = Product::findOrFail($draftId);
+        $product = Product::where('id', $draftId)
+            ->where('seller_id', Auth::id())
+            ->firstOrFail();
         
         // Route zu korrektem View
         $views = [
@@ -109,13 +270,15 @@ class SellerController extends Controller
     }
     
     /**
-     * SCHRITT 2: Speichern
+     * SCHRITT 2: Produktdetails speichern
      * POST /seller/products/create/step2
      */
     public function storeStep2(ProductStep2Request $request)
     {
         $validated = $request->validated();
-        $product = Product::findOrFail(session('product_draft_id'));
+        $product = Product::where('id', session('product_draft_id'))
+            ->where('seller_id', Auth::id())
+            ->firstOrFail();
         
         $product = $this->productService->saveStep2($product, $validated);
         
@@ -130,13 +293,16 @@ class SellerController extends Controller
     public function storeStep3(ProductStep3Request $request)
     {
         $validated = $request->validated();
-        $product = Product::findOrFail(session('product_draft_id'));
+        $product = Product::where('id', session('product_draft_id'))
+            ->where('seller_id', Auth::id())
+            ->firstOrFail();
         
         try {
             // Upload alle Medien
             if ($request->hasFile('media')) {
                 $mediaFiles = $request->file('media');
-                $sortOrder = $product->images()->max('sort_order') + 1;
+                $sortOrder = $product->images()->max('sort_order') ?? 0;
+                $sortOrder++;
                 
                 foreach ($mediaFiles as $index => $file) {
                     $isPrimary = ($index === 0 && $product->images()->count() === 0);
@@ -167,7 +333,9 @@ class SellerController extends Controller
     public function storeStep4(ProductStep4Request $request)
     {
         $validated = $request->validated();
-        $product = Product::findOrFail(session('product_draft_id'));
+        $product = Product::where('id', session('product_draft_id'))
+            ->where('seller_id', Auth::id())
+            ->firstOrFail();
         
         $product = $this->productService->saveStep4($product, $validated);
         
@@ -182,7 +350,9 @@ class SellerController extends Controller
     public function storeStep5(ProductStep5Request $request)
     {
         $validated = $request->validated();
-        $product = Product::findOrFail(session('product_draft_id'));
+        $product = Product::where('id', session('product_draft_id'))
+            ->where('seller_id', Auth::id())
+            ->firstOrFail();
         
         $result = $this->productService->saveAndPublish($product, $validated);
         
@@ -198,6 +368,10 @@ class SellerController extends Controller
             ->with('error', $result['message'])
             ->withInput();
     }
+    
+    // ============================================
+    // AJAX ENDPOINTS
+    // ============================================
     
     /**
      * AJAX: Auto-Save
@@ -215,7 +389,10 @@ class SellerController extends Controller
                 ], 400);
             }
             
-            $product = Product::findOrFail($draftId);
+            $product = Product::where('id', $draftId)
+                ->where('seller_id', Auth::id())
+                ->firstOrFail();
+            
             $success = $this->productService->autoSave($product, $request->all());
             
             return response()->json([
@@ -240,7 +417,9 @@ class SellerController extends Controller
     {
         try {
             $draftId = session('product_draft_id');
-            $product = Product::findOrFail($draftId);
+            $product = Product::where('id', $draftId)
+                ->where('seller_id', Auth::id())
+                ->firstOrFail();
             
             $suggestion = $this->priceService->suggest($product);
             
@@ -296,7 +475,10 @@ class SellerController extends Controller
     public function reorderMedia(Request $request)
     {
         try {
-            $product = Product::findOrFail(session('product_draft_id'));
+            $product = Product::where('id', session('product_draft_id'))
+                ->where('seller_id', Auth::id())
+                ->firstOrFail();
+            
             $orderedIds = $request->input('order', []);
             
             $this->mediaService->reorderMedia($product, $orderedIds);
@@ -312,5 +494,66 @@ class SellerController extends Controller
                 'message' => 'Fehler beim Sortieren',
             ], 500);
         }
+    }
+    
+    // ============================================
+    // HILFSMETHODEN
+    // ============================================
+    
+    /**
+     * Berechne Erfolgsquote (Zielpreis erreicht)
+     */
+    private function calculateSuccessRate(int $sellerId): float
+    {
+        $total = Raffle::whereHas('product', function($q) use ($sellerId) {
+            $q->where('seller_id', $sellerId);
+        })
+        ->whereIn('status', ['completed', 'active'])
+        ->count();
+        
+        if ($total === 0) return 0;
+        
+        $successful = Raffle::whereHas('product', function($q) use ($sellerId) {
+            $q->where('seller_id', $sellerId);
+        })
+        ->where('target_reached', true)
+        ->count();
+        
+        return round(($successful / $total) * 100, 1);
+    }
+    
+    /**
+     * Berechne Konversionsrate
+     */
+    private function calculateConversionRate(int $sellerId): float
+    {
+        $total = Raffle::whereHas('product', function($q) use ($sellerId) {
+            $q->where('seller_id', $sellerId);
+        })->count();
+        
+        if ($total === 0) return 0;
+        
+        $completed = Raffle::whereHas('product', function($q) use ($sellerId) {
+            $q->where('seller_id', $sellerId);
+        })
+        ->where('status', 'completed')
+        ->where('target_reached', true)
+        ->count();
+        
+        return round(($completed / $total) * 100, 2);
+    }
+    
+    /**
+     * Berechne durchschnittliche Tickets pro Verlosung
+     */
+    private function calculateAvgTicketsPerRaffle(int $sellerId): float
+    {
+        $avg = Raffle::whereHas('product', function($q) use ($sellerId) {
+            $q->where('seller_id', $sellerId);
+        })
+        ->where('status', 'completed')
+        ->avg('tickets_sold');
+        
+        return round($avg ?? 0, 1);
     }
 }
