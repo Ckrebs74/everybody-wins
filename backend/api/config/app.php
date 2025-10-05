@@ -124,5 +124,6 @@ return [
     ],
 
     'max_spending_per_hour' => env('MAX_SPENDING_PER_HOUR', 10),
+    'demo_mode' => env('DEMO_MODE', true),
 
 ];

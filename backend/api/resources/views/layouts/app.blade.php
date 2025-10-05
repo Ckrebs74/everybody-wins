@@ -50,7 +50,8 @@
     </main>
 
     <footer class="bg-gray-800 text-white text-center p-4 mt-8">
-        <p>© 2024 Jeder Gewinnt! - Max. 10€/Stunde Ausgabenlimit</p>
+        <p>© <?php echo date('Y'); ?> Jeder Gewinnt! - Max. 10€/Stunde Ausgabenlimit</p>
     </footer>
+    @stack('scripts')
 </body>
 </html>

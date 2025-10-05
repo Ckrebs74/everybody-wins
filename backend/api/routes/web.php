@@ -4,17 +4,15 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TicketController;
+use App\Http\Controllers\WalletController;
 use Illuminate\Support\Facades\Route;
 
-// =====================================================
-// Homepage - MIT korrekter Bildladung wie bei /raffles
-// =====================================================
+// Homepage
 Route::get('/', function () {
-    // Lade Raffles mit Product UND dessen Images (wie in RaffleController)
     $activeRaffles = \App\Models\Raffle::with([
-        'product',
-        'product.seller',
-        'product.images'  // <-- Wichtig: Nested eager loading
+        'product' => function($query) {
+            $query->with('images');
+        }
     ])
         ->where('status', 'active')
         ->limit(6)
@@ -37,11 +35,15 @@ Route::middleware('auth')->group(function () {
     
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::post('/deposit', [DashboardController::class, 'deposit'])->name('deposit');
     
-    // Tickets kaufen
-    Route::post('/raffles/{raffle}/buy-ticket', [TicketController::class, 'purchase'])
-        ->name('raffles.buy-ticket');
+    // Wallet
+    Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
+    Route::post('/wallet/deposit', [WalletController::class, 'deposit'])->name('wallet.deposit');
+    Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw');
+    
+    // Tickets
+    Route::post('/raffles/{raffle}/buy', [TicketController::class, 'purchase'])->name('tickets.purchase');
+    Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.index');
 });
 
 // Public Raffle Routes

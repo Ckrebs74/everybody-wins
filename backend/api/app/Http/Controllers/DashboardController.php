@@ -1,22 +1,21 @@
 <?php
 
-// =====================================================
-// FILE: app/Http/Controllers/DashboardController.php
-// =====================================================
-
 namespace App\Http\Controllers;
 
+use App\Models\Ticket;
+use App\Models\Transaction;
+use App\Services\SpendingLimitService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Services\SpendingLimitService;
 
 class DashboardController extends Controller
 {
-    protected $spendingLimit;
+    protected $spendingLimitService;
 
-    public function __construct(SpendingLimitService $spendingLimit)
+    public function __construct(SpendingLimitService $spendingLimitService)
     {
-        $this->spendingLimit = $spendingLimit;
+        $this->middleware('auth');
+        $this->spendingLimitService = $spendingLimitService;
     }
 
     /**
@@ -25,70 +24,80 @@ class DashboardController extends Controller
     public function index()
     {
         $user = Auth::user();
-        $user->load(['wallet', 'tickets.raffle.product']);
 
-        // Spending Limit Info
-        $currentSpending = $this->spendingLimit->getCurrentHourSpending($user);
-        $remainingLimit = $this->spendingLimit->getRemainingLimit($user);
+        // Spending Statistics
+        $spendingStats = $this->spendingLimitService->getStatistics($user->id);
 
         // Aktive Tickets
-        $activeTickets = $user->tickets()
+        $activeTickets = Ticket::with(['raffle.product.images'])
+            ->where('user_id', $user->id)
             ->whereHas('raffle', function($q) {
                 $q->where('status', 'active');
             })
-            ->count();
+            ->orderBy('purchased_at', 'desc')
+            ->limit(5)
+            ->get();
 
-        // Gewonnene Raffles
-        $wonRaffles = $user->tickets()
-            ->where('status', 'winner')
-            ->count();
+        // Anzahl Tickets pro Status
+        $ticketCounts = [
+            'active' => Ticket::where('user_id', $user->id)
+                ->whereHas('raffle', fn($q) => $q->where('status', 'active'))
+                ->count(),
+            'winner' => Ticket::where('user_id', $user->id)
+                ->where('status', 'winner')
+                ->count(),
+            'total' => Ticket::where('user_id', $user->id)->count(),
+        ];
+
+        // Letzte Transaktionen
+        $recentTransactions = Transaction::where('user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        // Gewinnchancen berechnen
+        $winningChances = $this->calculateWinningChances($user->id);
 
         return view('dashboard', compact(
-            'user', 
-            'currentSpending', 
-            'remainingLimit',
+            'user',
+            'spendingStats',
             'activeTickets',
-            'wonRaffles'
+            'ticketCounts',
+            'recentTransactions',
+            'winningChances'
         ));
     }
 
     /**
-     * Wallet aufladen
+     * Berechne Gewinnchancen für aktive Tickets
      */
-    public function deposit(Request $request)
+    private function calculateWinningChances(int $userId): array
     {
-        $request->validate([
-            'amount' => 'required|numeric|min:5|max:100'
-        ]);
+        $activeTickets = Ticket::with('raffle')
+            ->where('user_id', $userId)
+            ->whereHas('raffle', fn($q) => $q->where('status', 'active'))
+            ->get();
 
-        // Hier würde normalerweise Payment Provider kommen
-        // Für Test einfach Balance erhöhen
-        
-        $user = Auth::user();
-        $amount = $request->amount;
+        $chances = [];
 
-        DB::beginTransaction();
-        try {
-            $user->wallet->increment('balance', $amount);
-            $user->wallet->increment('total_deposited', $amount);
+        foreach ($activeTickets->groupBy('raffle_id') as $raffleId => $tickets) {
+            $raffle = $tickets->first()->raffle;
+            $userTicketCount = $tickets->count();
+            $totalTickets = $raffle->tickets_sold;
 
-            Transaction::create([
-                'user_id' => $user->id,
-                'type' => 'deposit',
-                'amount' => $amount,
-                'balance_before' => $user->wallet->balance - $amount,
-                'balance_after' => $user->wallet->balance,
-                'status' => 'completed',
-                'description' => "Einzahlung von {$amount}€"
-            ]);
-
-            DB::commit();
-
-            return back()->with('success', "{$amount}€ erfolgreich eingezahlt!");
-
-        } catch (\Exception $e) {
-            DB::rollback();
-            return back()->with('error', 'Einzahlung fehlgeschlagen.');
+            if ($totalTickets > 0) {
+                $chance = ($userTicketCount / $totalTickets) * 100;
+                
+                $chances[] = [
+                    'raffle_id' => $raffleId,
+                    'product_title' => $raffle->product->title,
+                    'user_tickets' => $userTicketCount,
+                    'total_tickets' => $totalTickets,
+                    'chance_percentage' => round($chance, 2),
+                ];
+            }
         }
+
+        return $chances;
     }
 }

@@ -24,20 +24,20 @@
         @foreach($activeRaffles as $raffle)
             <div class="bg-white rounded-lg shadow-lg overflow-hidden">
                 
-                {{-- BILDANZEIGE - Genau wie auf /raffles --}}
+                {{-- BILDANZEIGE - Exakt wie auf /raffles --}}
                 <a href="/raffles/{{ $raffle->id }}">
                     <div class="relative h-48 bg-gray-100">
                         @php
-                            // Hole alle Bilder des Produkts
-                            $productImages = $raffle->product->images;
+                            // Hole Bilder EXAKT wie auf der funktionierenden /raffles Seite
+                            $images = $raffle->product->images()->get();
                             $mainImage = null;
                             
-                            // Versuche Primärbild zu finden
-                            if ($productImages && $productImages->count() > 0) {
-                                $mainImage = $productImages->where('is_primary', true)->first();
+                            if ($images && $images->count() > 0) {
+                                // Suche Primärbild
+                                $mainImage = $images->where('is_primary', true)->first();
                                 // Falls kein Primärbild, nimm das erste
                                 if (!$mainImage) {
-                                    $mainImage = $productImages->first();
+                                    $mainImage = $images->first();
                                 }
                             }
                         @endphp
@@ -47,7 +47,7 @@
                                  alt="{{ $mainImage->alt_text ?? $raffle->product->title }}"
                                  class="w-full h-full object-cover">
                         @else
-                            {{-- Fallback nur wenn wirklich kein Bild vorhanden --}}
+                            {{-- Fallback nur wenn wirklich keine Bilder --}}
                             <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-yellow-400 to-yellow-600">
                                 <span class="text-white text-5xl font-bold">
                                     {{ substr($raffle->product->title, 0, 1) }}
