@@ -21,7 +21,7 @@
         {{-- Aktuelles Guthaben --}}
         <div class="bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg shadow-lg p-8 text-white">
             <h2 class="text-xl font-semibold mb-4">Aktuelles Guthaben</h2>
-            <p class="text-5xl font-bold mb-6">{{ number_format($balance, 2, ',', '.') }} €</p>
+            <p class="text-5xl font-bold mb-6">{{ number_format($stats['balance'], 2, ',', '.') }} €</p>
             
             <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>

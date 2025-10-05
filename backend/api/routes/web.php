@@ -37,10 +37,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     
     // Wallet
-    Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
-    Route::post('/wallet/deposit', [WalletController::class, 'deposit'])->name('wallet.deposit');
-    Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw');
-    
+    Route::middleware('auth')->group(function () {
+        Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
+        Route::post('/wallet/deposit', [WalletController::class, 'deposit'])->name('wallet.deposit');
+        Route::get('/wallet/deposit/success', [WalletController::class, 'depositSuccess'])->name('wallet.deposit.success');  // NEU
+        Route::get('/wallet/withdraw', [WalletController::class, 'showWithdraw'])->name('wallet.withdraw');
+        Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw.post');
+    });
     // Tickets
     Route::post('/raffles/{raffle}/buy', [TicketController::class, 'purchase'])->name('tickets.purchase');
     Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.index');

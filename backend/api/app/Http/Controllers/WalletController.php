@@ -26,6 +26,7 @@ class WalletController extends Controller
         
         // Get transaction history
         $transactions = Transaction::where('user_id', $user->id)
+            ->with('product')
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -79,9 +80,84 @@ class WalletController extends Controller
             }
         }
 
-        // Stripe Integration (für Production)
-        // TODO: Stripe Checkout Session erstellen
-        return back()->with('error', 'Stripe-Integration folgt in Kürze.');
+        // Stripe Checkout Session erstellen
+        try {
+            \Stripe\Stripe::setApiKey(config('services.stripe.secret'));
+
+            $session = \Stripe\Checkout\Session::create([
+                'payment_method_types' => ['card'],
+                'line_items' => [[
+                    'price_data' => [
+                        'currency' => 'eur',
+                        'product_data' => [
+                            'name' => 'Guthaben aufladen',
+                            'description' => 'Jeder gewinnt! Wallet Guthaben',
+                        ],
+                        'unit_amount' => $request->amount * 100, // Cent
+                    ],
+                    'quantity' => 1,
+                ]],
+                'mode' => 'payment',
+                'success_url' => route('wallet.deposit.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url' => route('wallet.index'),
+                'client_reference_id' => Auth::id(),
+                'metadata' => [
+                    'user_id' => Auth::id(),
+                    'amount' => $request->amount,
+                    'type' => 'wallet_deposit',
+                ],
+            ]);
+
+            return redirect($session->url);
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Stripe Fehler: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle successful Stripe payment
+     */
+    public function depositSuccess(Request $request)
+    {
+        if (!$request->has('session_id')) {
+            return redirect()->route('wallet.index')
+                ->with('error', 'Ungültige Session.');
+        }
+
+        try {
+            \Stripe\Stripe::setApiKey(config('services.stripe.secret'));
+            $session = \Stripe\Checkout\Session::retrieve($request->session_id);
+
+            if ($session->payment_status === 'paid') {
+                $amount = $session->metadata->amount;
+                $userId = $session->metadata->user_id;
+
+                // Prüfe ob bereits verarbeitet
+                $existingTransaction = \App\Models\Transaction::where('reference_type', 'stripe_session')
+                    ->where('reference_id', $session->id)
+                    ->first();
+
+                if (!$existingTransaction) {
+                    $this->walletService->addBalance(
+                        $userId,
+                        $amount,
+                        $session->id,
+                        'Stripe Einzahlung - Session: ' . $session->id
+                    );
+                }
+
+                return redirect()->route('wallet.index')
+                    ->with('success', "Erfolgreich {$amount}€ eingezahlt!");
+            }
+
+            return redirect()->route('wallet.index')
+                ->with('error', 'Zahlung wurde nicht bestätigt.');
+
+        } catch (\Exception $e) {
+            return redirect()->route('wallet.index')
+                ->with('error', 'Fehler bei der Verarbeitung: ' . $e->getMessage());
+        }
     }
 
     /**

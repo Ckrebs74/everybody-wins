@@ -26,17 +26,17 @@ class WalletService
             $user->save();
             
             // Create transaction record
-            Transaction::create([
-                'user_id' => $userId,
-                'type' => 'deposit',
-                'amount' => $amount,
-                'balance_before' => $balanceBefore,
-                'balance_after' => $balanceAfter,
-                'reference_type' => $referenceId ? 'raffle' : null,
-                'reference_id' => $referenceId,
-                'status' => 'completed',
-                'description' => $description,
-            ]);
+                Transaction::create([
+                    'user_id' => $userId,
+                    'type' => 'deposit',
+                    'amount' => $amount,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'reference_type' => $referenceId ? 'stripe_session' : null,  // Angepasst
+                    'reference_id' => $referenceId,
+                    'status' => 'completed',
+                    'description' => $description,
+                ]);
             
             DB::commit();
             return true;
