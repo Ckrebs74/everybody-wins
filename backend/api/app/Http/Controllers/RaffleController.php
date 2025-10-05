@@ -8,16 +8,34 @@ use Illuminate\Http\Request;
 
 class RaffleController extends Controller
 {
+    /**
+     * Display a listing of all active raffles
+     */
     public function index(Request $request)
     {
-        // WICHTIG: 'images' muss in der with() Anweisung sein!
+        // ⚠️ WICHTIG: 'images' MUSS hier stehen!
         $query = Product::with(['category', 'images', 'raffle', 'seller'])
             ->whereHas('raffle', function($q) {
                 $q->where('status', 'active');
             })
             ->where('status', 'active');
 
-        // Sortierung
+        // Category filter
+        if ($request->has('category') && $request->category != 'all') {
+            $query->where('category_id', $request->category);
+        }
+
+        // Search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = $request->search;
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('title', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('description', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('brand', 'like', '%' . $searchTerm . '%');
+            });
+        }
+
+        // Sorting
         $sort = $request->get('sort', 'newest');
         switch ($sort) {
             case 'popular':
@@ -27,6 +45,12 @@ class RaffleController extends Controller
                 $query->whereHas('raffle', function($q) {
                     $q->orderBy('ends_at', 'asc');
                 });
+                break;
+            case 'price_low':
+                $query->orderBy('target_price', 'asc');
+                break;
+            case 'price_high':
+                $query->orderBy('target_price', 'desc');
                 break;
             default: // newest
                 $query->orderBy('created_at', 'desc');
@@ -38,15 +62,26 @@ class RaffleController extends Controller
         return view('raffles.index', compact('products', 'categories'));
     }
 
+    /**
+     * Display the specified raffle
+     */
     public function show($id)
     {
-        // Auch hier: 'images' laden!
-        $product = Product::with(['images', 'seller', 'category', 'raffle'])
+        // ⚠️ WICHTIG: Auch hier 'images' laden!
+        $product = Product::with(['images', 'category', 'seller', 'raffle', 'raffle.tickets'])
             ->findOrFail($id);
-        
-        // View Count erhöhen
+
+        // Increment view count
         $product->increment('view_count');
-        
-        return view('raffles.show', compact('product'));
+
+        // Get related products
+        $relatedProducts = Product::with(['images', 'raffle'])
+            ->where('category_id', $product->category_id)
+            ->where('id', '!=', $product->id)
+            ->where('status', 'active')
+            ->limit(4)
+            ->get();
+
+        return view('raffles.show', compact('product', 'relatedProducts'));
     }
 }
