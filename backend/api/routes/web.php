@@ -38,13 +38,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     
     // Wallet
-    Route::middleware('auth')->group(function () {
-        Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
-        Route::post('/wallet/deposit', [WalletController::class, 'deposit'])->name('wallet.deposit');
-        Route::get('/wallet/deposit/success', [WalletController::class, 'depositSuccess'])->name('wallet.deposit.success');
-        Route::get('/wallet/withdraw', [WalletController::class, 'showWithdraw'])->name('wallet.withdraw');
-        Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw.post');
-    });
+    Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
+    Route::post('/wallet/deposit', [WalletController::class, 'deposit'])->name('wallet.deposit');
+    Route::get('/wallet/deposit/success', [WalletController::class, 'depositSuccess'])->name('wallet.deposit.success');
+    Route::get('/wallet/withdraw', [WalletController::class, 'showWithdraw'])->name('wallet.withdraw');
+    Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw.post');
     
     // Tickets
     Route::post('/raffles/{raffle}/buy', [TicketController::class, 'purchase'])->name('tickets.purchase');
@@ -58,8 +56,8 @@ Route::get('/raffles/{slug}', [RaffleController::class, 'show'])->name('raffles.
 // Verkäufer-Bereich (nur für Verkäufer und Admins)
 Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(function () {
     
-    // Dashboard
-    Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');
+    // Dashboard - KORRIGIERT: index() statt dashboard()
+    Route::get('/dashboard', [SellerController::class, 'index'])->name('dashboard');
     
     // Produktverwaltung
     Route::get('/products', [SellerController::class, 'products'])->name('products.index');
@@ -67,15 +65,14 @@ Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(
     
     // Analytics
     Route::get('/analytics', [SellerController::class, 'analytics'])->name('analytics');
+});
 
-    Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.products.')->group(function () {
+// Multi-Step Produkterstellung - KORRIGIERT: Eigene Gruppe ohne doppelte Verschachtelung
+Route::middleware(['auth', 'seller'])->prefix('seller/products')->name('seller.products.')->group(function () {
     
     // SCHRITT 1: Kategorie & Typ auswählen
-    Route::get('/create', [SellerController::class, 'create'])
-        ->name('create');
-    
-    Route::post('/create/step1', [SellerController::class, 'storeStep1'])
-        ->name('create.step1');
+    Route::get('/create', [SellerController::class, 'create'])->name('create');
+    Route::post('/create/step1', [SellerController::class, 'storeStep1'])->name('create.step1');
     
     // SCHRITT 2-5: Weitere Schritte anzeigen
     Route::get('/create/step/{step}', [SellerController::class, 'showStep'])
@@ -83,46 +80,28 @@ Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(
         ->name('create.step');
     
     // SCHRITT 2: Produktdetails speichern
-    Route::post('/create/step2', [SellerController::class, 'storeStep2'])
-        ->name('create.step2');
+    Route::post('/create/step2', [SellerController::class, 'storeStep2'])->name('create.step2');
     
     // SCHRITT 3: Media-Upload (mit erhöhtem Rate Limit)
     Route::post('/create/step3', [SellerController::class, 'storeStep3'])
-        ->middleware('throttle:20,1') // 20 Requests pro Minute für Uploads
+        ->middleware('throttle:20,1')
         ->name('create.step3');
     
     // SCHRITT 4: Preisgestaltung speichern
-    Route::post('/create/step4', [SellerController::class, 'storeStep4'])
-        ->name('create.step4');
+    Route::post('/create/step4', [SellerController::class, 'storeStep4'])->name('create.step4');
     
     // SCHRITT 5: Veröffentlichen
-    Route::post('/create/step5', [SellerController::class, 'storeStep5'])
-        ->name('create.step5');
+    Route::post('/create/step5', [SellerController::class, 'storeStep5'])->name('create.step5');
     
     // AJAX ENDPOINTS
-    
-    // Auto-Save (alle 30 Sekunden)
     Route::post('/auto-save', [SellerController::class, 'autoSave'])
-        ->middleware('throttle:60,1') // 60 Requests pro Minute
+        ->middleware('throttle:60,1')
         ->name('auto-save');
     
-    // KI-Preisempfehlung
     Route::post('/suggest-price', [SellerController::class, 'suggestPrice'])
         ->middleware('throttle:30,1')
         ->name('suggest-price');
     
-    // Medium löschen
-    Route::delete('/media/{id}', [SellerController::class, 'deleteMedia'])
-        ->name('delete-media');
-    
-    // Medien sortieren
-    Route::post('/media/reorder', [SellerController::class, 'reorderMedia'])
-        ->name('reorder-media');
-});
-    
-    // Später: Produkterstellung
-    // Route::get('/products/create', [SellerController::class, 'create'])->name('products.create');
-    // Route::post('/products', [SellerController::class, 'store'])->name('products.store');
-    // Route::get('/products/{id}/edit', [SellerController::class, 'edit'])->name('products.edit');
-    // Route::put('/products/{id}', [SellerController::class, 'update'])->name('products.update');
+    Route::delete('/media/{id}', [SellerController::class, 'deleteMedia'])->name('delete-media');
+    Route::post('/media/reorder', [SellerController::class, 'reorderMedia'])->name('reorder-media');
 });
