@@ -64,18 +64,17 @@ class RaffleController extends Controller
 
     /**
      * Display the specified raffle
-     * ⚠️ WICHTIG: Hier MUSS 'images' geladen werden!
      */
     public function show($id)
     {
-        // KRITISCH: 'images' MUSS hier in der with() Anweisung stehen!
+        // Lade das Produkt mit allen Relationships
         $product = Product::with(['images', 'category', 'seller', 'raffle', 'raffle.tickets'])
             ->findOrFail($id);
 
         // Increment view count
         $product->increment('view_count');
 
-        // Get related products - auch mit images!
+        // Get related products
         $relatedProducts = Product::with(['images', 'raffle'])
             ->where('category_id', $product->category_id)
             ->where('id', '!=', $product->id)
@@ -83,11 +82,7 @@ class RaffleController extends Controller
             ->limit(4)
             ->get();
 
-        // Debug: Prüfe ob Bilder geladen wurden (entfernen nach Test)
-        \Log::info('Product ' . $product->id . ' has ' . $product->images->count() . ' images');
-        if($product->images->count() > 0) {
-            \Log::info('First image URL: ' . $product->images->first()->image_path);
-        }
+        // Keine Debug-Zeilen mehr hier!
 
         return view('raffles.show', compact('product', 'relatedProducts'));
     }
