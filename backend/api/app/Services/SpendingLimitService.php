@@ -67,4 +67,20 @@ class SpendingLimitService
             ->orderBy('hour_slot', 'desc')
             ->get();
     }
+
+    /**
+     * Get spending statistics for user
+     */
+    public function getStatistics($userId)
+    {
+        $currentHourSpent = $this->maxPerHour - $this->getRemainingBudget($userId);
+        $remaining = $this->getRemainingBudget($userId);
+
+        return [
+            'current_hour' => $currentHourSpent,
+            'remaining_hour' => $remaining,
+            'max_per_hour' => $this->maxPerHour,
+            'percentage_used' => ($currentHourSpent / $this->maxPerHour) * 100,
+        ];
+    }
 }
