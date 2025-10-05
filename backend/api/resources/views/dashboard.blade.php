@@ -96,7 +96,7 @@
                     </p>
                 </div>
                 
-                <a href="{{ route('raffles.show', $item['product']->id) }}" 
+                <a href="{{ route('raffles.show', $item['product']->slug) }}" 
                    class="mt-3 block text-center bg-yellow-500 hover:bg-yellow-600 text-gray-800 font-bold py-2 rounded-lg transition">
                     Details ansehen
                 </a>

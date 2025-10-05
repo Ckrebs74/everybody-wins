@@ -121,8 +121,8 @@
                         </div>
                     </div>
 
-                    {{-- Kaufformular --}}
-                    <form action="{{ route('tickets.purchase', $product->id) }}" method="POST">
+                    {{-- Kaufformular - Verwendet Raffle ID (nicht Slug) --}}
+                    <form action="{{ route('tickets.purchase', $product->raffle->id) }}" method="POST">
                         @csrf
                         
                         <div class="bg-white border-2 border-gray-300 rounded-lg p-6 mb-4">
@@ -196,7 +196,7 @@
         </div>
     </div>
 
-    {{-- Ähnliche Produkte --}}
+    {{-- Ähnliche Produkte mit Slug --}}
     @if($relatedProducts && $relatedProducts->count() > 0)
     <div class="mt-12">
         <h2 class="text-2xl font-bold mb-6">Ähnliche Verlosungen</h2>
@@ -205,7 +205,7 @@
                 @php
                     $relatedImages = $related->images()->get();
                 @endphp
-                <a href="{{ route('raffles.show', $related->id) }}" class="bg-white rounded-lg shadow hover:shadow-lg transition">
+                <a href="{{ route('raffles.show', $related->slug) }}" class="bg-white rounded-lg shadow hover:shadow-lg transition">
                     @if($relatedImages->count() > 0)
                         <img src="{{ $relatedImages->first()->image_path }}" 
                              alt="{{ $related->title }}"

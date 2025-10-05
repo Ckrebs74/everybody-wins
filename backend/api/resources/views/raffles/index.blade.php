@@ -96,8 +96,8 @@
                         </div>
                     @endif
 
-                    {{-- CTA Button --}}
-                    <a href="{{ route('raffles.show', $product->id) }}" 
+                    {{-- CTA Button mit Slug --}}
+                    <a href="{{ route('raffles.show', $product->slug) }}" 
                        class="block w-full bg-yellow-500 text-center text-white py-2 rounded-lg hover:bg-yellow-600 font-semibold transition-colors">
                         Jetzt mitspielen →
                     </a>

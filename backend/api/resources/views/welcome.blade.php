@@ -24,8 +24,8 @@
         @foreach($activeRaffles as $raffle)
             <div class="bg-white rounded-lg shadow-lg overflow-hidden">
                 
-                {{-- BILDANZEIGE - Exakt wie auf /raffles --}}
-                <a href="/raffles/{{ $raffle->id }}">
+                {{-- BILDANZEIGE mit Slug-URL --}}
+                <a href="{{ route('raffles.show', $raffle->product->slug) }}">
                     <div class="relative h-48 bg-gray-100">
                         @php
                             // Hole Bilder EXAKT wie auf der funktionierenden /raffles Seite
@@ -74,7 +74,7 @@
                         </p>
                     </div>
                     
-                    <a href="/raffles/{{ $raffle->id }}" 
+                    <a href="{{ route('raffles.show', $raffle->product->slug) }}" 
                        class="bg-yellow-500 text-gray-800 px-4 py-2 rounded block text-center hover:bg-yellow-400 font-semibold">
                         Jetzt mitmachen - nur 1€!
                     </a>
