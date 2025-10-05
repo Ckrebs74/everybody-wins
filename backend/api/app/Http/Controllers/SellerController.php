@@ -132,16 +132,41 @@ class SellerController extends Controller
      * GET /seller/products/{id}
      */
     public function show($id)
-    {
-        $product = Product::where('id', $id)
-            ->where('seller_id', Auth::id())
-            ->with(['category', 'raffle', 'images' => function($q) {
-                $q->orderBy('sort_order');
-            }])
-            ->firstOrFail();
-        
-        return view('seller.products.show', compact('product'));
+{
+    $product = Product::where('id', $id)
+        ->where('seller_id', Auth::id())
+        ->with(['category', 'raffle', 'images' => function($q) {
+            $q->orderBy('sort_order');
+        }])
+        ->firstOrFail();
+    
+    // Hole letzte Tickets falls Raffle existiert
+    $recentTickets = collect();
+    if ($product->raffle) {
+        $recentTickets = $product->raffle->tickets()
+            ->with('user')
+            ->orderBy('purchased_at', 'desc')
+            ->limit(10)
+            ->get();
     }
+    
+    // Berechne Statistiken falls Raffle existiert
+    $stats = null;
+    if ($product->raffle) {
+        $raffle = $product->raffle;
+        $stats = [
+            'progress_percentage' => $raffle->total_target > 0 
+                ? ($raffle->total_revenue / $raffle->total_target) * 100 
+                : 0,
+            'tickets_sold' => $raffle->tickets_sold,
+            'total_revenue' => $raffle->total_revenue,
+            'total_target' => $raffle->total_target,
+            'unique_participants' => $raffle->unique_participants,
+        ];
+    }
+    
+    return view('seller.products.show', compact('product', 'recentTickets', 'stats'));
+}
     
     /**
      * ANALYTICS - Detaillierte Statistiken
