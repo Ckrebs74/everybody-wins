@@ -77,3 +77,11 @@ networks:
 
 volumes:
   mysql_data:
+
+  scheduler:
+  build: ./backend/api
+  command: php artisan schedule:work
+  volumes:
+    - ./backend/api:/var/www/html
+  depends_on:
+    - mysql

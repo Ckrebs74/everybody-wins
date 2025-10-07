@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\SellerController;
+use App\Http\Controllers\Admin\AdminRaffleController;
 use Illuminate\Support\Facades\Route;
 
 // Homepage
@@ -111,3 +112,52 @@ Route::middleware(['auth', 'seller'])->group(function () {
         ->where('id', '[0-9]+')  // NUR Zahlen, damit "create" nicht matched
         ->name('seller.products.show');
 });
+
+// =====================================================
+// ADMIN RAFFLE MANAGEMENT ROUTES
+// =====================================================
+
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+    
+    // Admin Raffle Dashboard
+    Route::get('/raffles', [AdminRaffleController::class, 'index'])
+        ->name('raffles.index');
+    
+    // Raffle Details
+    Route::get('/raffles/{raffle}', [AdminRaffleController::class, 'show'])
+        ->name('raffles.show');
+    
+    // Live Drawing View (Public-Facing)
+    Route::get('/raffles/{raffle}/live-drawing', [AdminRaffleController::class, 'liveDrawing'])
+        ->name('raffles.live-drawing');
+    
+    // Execute Live Draw (API)
+    Route::post('/raffles/{raffle}/execute-draw', [AdminRaffleController::class, 'executeLiveDraw'])
+        ->name('raffles.execute-live-draw');
+    
+    // Manual Actions
+    Route::post('/raffles/{raffle}/draw', [AdminRaffleController::class, 'draw'])
+        ->name('raffles.draw');
+    
+    Route::post('/raffles/{raffle}/start', [AdminRaffleController::class, 'start'])
+        ->name('raffles.start');
+    
+    Route::post('/raffles/{raffle}/cancel', [AdminRaffleController::class, 'cancel'])
+        ->name('raffles.cancel');
+    
+    Route::patch('/raffles/{raffle}/status', [AdminRaffleController::class, 'updateStatus'])
+        ->name('raffles.update-status');
+    
+    // Bulk Actions
+    Route::post('/raffles/bulk-action', [AdminRaffleController::class, 'bulkAction'])
+        ->name('raffles.bulk-action');
+});
+
+// =====================================================
+// PUBLIC LIVE DRAWING ROUTE (Without Auth)
+// =====================================================
+
+// Falls du Live-Drawings öffentlich machen willst (z.B. auf Twitch/YouTube)
+Route::get('/live/{raffle}', function(\App\Models\Raffle $raffle) {
+    return view('admin.raffles.live-drawing', compact('raffle'));
+})->name('public.live-drawing');

@@ -1,0 +1,299 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Raffle;
+use App\Models\User;
+use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Payout Service - Behandelt alle 3 Gewinnszenarien
+ * 
+ * Szenario 1: Target erreicht
+ * - Verkäufer erhält target_price
+ * - Gewinner erhält Produkt
+ * - Plattform behält platform_fee (30%)
+ * 
+ * Szenario 2: Target nicht erreicht + decision_type = "give"
+ * - Verkäufer erhält Nettoerlös (total_revenue - platform_fee)
+ * - Gewinner erhält Produkt
+ * - Plattform behält platform_fee (30%)
+ * 
+ * Szenario 3: Target nicht erreicht + decision_type = "keep"
+ * - Verkäufer behält Produkt
+ * - Gewinner erhält Nettoerlös (total_revenue - platform_fee)
+ * - Plattform behält platform_fee (30%)
+ */
+class PayoutService
+{
+    protected float $platformCommission = 0.30; // 30%
+    
+    /**
+     * Hauptmethode: Verarbeitet Payout nach Raffle-Ziehung
+     */
+    public function processRafflePayout(Raffle $raffle): array
+    {
+        DB::beginTransaction();
+        
+        try {
+            $product = $raffle->product;
+            $seller = $product->seller;
+            $winner = $raffle->winnerTicket->user;
+            
+            // Provision berechnen (30% vom Umsatz)
+            $platformFee = $raffle->total_revenue * $this->platformCommission;
+            $netRevenue = $raffle->total_revenue - $platformFee;
+            
+            // Entscheiden welches Szenario
+            if ($raffle->target_reached) {
+                $result = $this->handleTargetReached($raffle, $seller, $winner, $platformFee);
+            } else {
+                // Verkäufer-Entscheidung aus dem Produkt holen
+                $decisionType = $product->decision_type; // 'keep' oder 'give'
+                
+                if ($decisionType === 'give') {
+                    $result = $this->handleTargetNotReachedGive($raffle, $seller, $winner, $netRevenue, $platformFee);
+                } else {
+                    $result = $this->handleTargetNotReachedKeep($raffle, $seller, $winner, $netRevenue, $platformFee);
+                }
+            }
+            
+            // Raffle payout info aktualisieren
+            $raffle->update([
+                'final_decision' => $result['final_decision'],
+                'payout_amount' => $result['payout_amount']
+            ]);
+            
+            DB::commit();
+            
+            Log::info('Payout processed successfully', [
+                'raffle_id' => $raffle->id,
+                'scenario' => $result['scenario'],
+                'final_decision' => $result['final_decision']
+            ]);
+            
+            return $result;
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Payout processing failed', [
+                'raffle_id' => $raffle->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            throw $e;
+        }
+    }
+    
+    /**
+     * SZENARIO 1: Target erreicht
+     * Verkäufer happy, Gewinner happy, alle glücklich! 🎉
+     */
+    protected function handleTargetReached(Raffle $raffle, User $seller, User $winner, float $platformFee): array
+    {
+        $product = $raffle->product;
+        
+        // 1. Verkäufer erhält seinen Zielpreis
+        $sellerPayout = $raffle->target_price;
+        
+        $seller->update([
+            'wallet_balance' => DB::raw("wallet_balance + {$sellerPayout}")
+        ]);
+        
+        Transaction::create([
+            'user_id' => $seller->id,
+            'type' => 'winning',
+            'amount' => $sellerPayout,
+            'balance_before' => $seller->wallet_balance,
+            'balance_after' => $seller->wallet_balance + $sellerPayout,
+            'reference_type' => 'raffle',
+            'reference_id' => $raffle->id,
+            'status' => 'completed',
+            'description' => "Verkaufserlös: {$product->title} (Zielpreis erreicht)"
+        ]);
+        
+        // 2. Gewinner erhält das Produkt (keine Transaktion, nur Notification)
+        $winner->notifications()->create([
+            'type' => 'product_won',
+            'title' => '🎁 Du hast das Produkt gewonnen!',
+            'message' => "Du hast '{$product->title}' gewonnen! Der Verkäufer wird sich bald mit dir in Verbindung setzen.",
+            'action_url' => route('raffles.show', $raffle->id)
+        ]);
+        
+        // 3. Plattform behält die Provision (wird nicht ausgezahlt, nur geloggt)
+        Log::info('Platform fee collected', [
+            'raffle_id' => $raffle->id,
+            'platform_fee' => $platformFee,
+            'total_revenue' => $raffle->total_revenue
+        ]);
+        
+        return [
+            'scenario' => 'target_reached',
+            'success' => true,
+            'final_decision' => 'product_to_winner',
+            'payout_amount' => $sellerPayout,
+            'seller_received' => $sellerPayout,
+            'winner_received' => 'product',
+            'platform_fee' => $platformFee,
+            'message' => 'Zielpreis erreicht! Verkäufer erhält Geld, Gewinner erhält Produkt.'
+        ];
+    }
+    
+    /**
+     * SZENARIO 2: Target NICHT erreicht + Verkäufer gibt Produkt ab
+     * Verkäufer nimmt weniger Geld, aber Gewinner happy
+     */
+    protected function handleTargetNotReachedGive(Raffle $raffle, User $seller, User $winner, float $netRevenue, float $platformFee): array
+    {
+        $product = $raffle->product;
+        
+        // 1. Verkäufer erhält Nettoerlös (weniger als Zielpreis)
+        $seller->update([
+            'wallet_balance' => DB::raw("wallet_balance + {$netRevenue}")
+        ]);
+        
+        Transaction::create([
+            'user_id' => $seller->id,
+            'type' => 'winning',
+            'amount' => $netRevenue,
+            'balance_before' => $seller->wallet_balance,
+            'balance_after' => $seller->wallet_balance + $netRevenue,
+            'reference_type' => 'raffle',
+            'reference_id' => $raffle->id,
+            'status' => 'completed',
+            'description' => "Verkaufserlös: {$product->title} (Zielpreis nicht erreicht, Produkt abgegeben)"
+        ]);
+        
+        // 2. Gewinner erhält das Produkt
+        $winner->notifications()->create([
+            'type' => 'product_won',
+            'title' => '🎁 Du hast das Produkt gewonnen!',
+            'message' => "Du hast '{$product->title}' gewonnen! Der Verkäufer wird sich bald mit dir in Verbindung setzen.",
+            'action_url' => route('raffles.show', $raffle->id)
+        ]);
+        
+        return [
+            'scenario' => 'target_not_reached_give',
+            'success' => true,
+            'final_decision' => 'product_to_winner',
+            'payout_amount' => $netRevenue,
+            'seller_received' => $netRevenue,
+            'winner_received' => 'product',
+            'platform_fee' => $platformFee,
+            'message' => 'Zielpreis nicht erreicht, aber Verkäufer gibt Produkt ab. Gewinner erhält Produkt.'
+        ];
+    }
+    
+    /**
+     * SZENARIO 3: Target NICHT erreicht + Verkäufer behält Produkt
+     * Verkäufer behält Produkt, Gewinner bekommt Geld
+     */
+    protected function handleTargetNotReachedKeep(Raffle $raffle, User $seller, User $winner, float $netRevenue, float $platformFee): array
+    {
+        $product = $raffle->product;
+        
+        // 1. Verkäufer behält Produkt (keine Transaktion nötig)
+        $seller->notifications()->create([
+            'type' => 'raffle_completed',
+            'title' => 'Verlosung beendet - Produkt behalten',
+            'message' => "Die Verlosung für '{$product->title}' hat den Zielpreis nicht erreicht. Du behältst das Produkt wie vereinbart.",
+            'action_url' => route('seller.products.show', $product->id)
+        ]);
+        
+        // 2. Gewinner erhält den Nettoerlös in seinem Wallet
+        $winner->update([
+            'wallet_balance' => DB::raw("wallet_balance + {$netRevenue}")
+        ]);
+        
+        Transaction::create([
+            'user_id' => $winner->id,
+            'type' => 'winning',
+            'amount' => $netRevenue,
+            'balance_before' => $winner->wallet_balance,
+            'balance_after' => $winner->wallet_balance + $netRevenue,
+            'reference_type' => 'raffle',
+            'reference_id' => $raffle->id,
+            'status' => 'completed',
+            'description' => "Gewinn: {$product->title} (Geldpreis statt Produkt)"
+        ]);
+        
+        $winner->notifications()->create([
+            'type' => 'money_won',
+            'title' => '💰 Herzlichen Glückwunsch! Du hast gewonnen!',
+            'message' => "Du hast {$netRevenue}€ gewonnen! Das Geld wurde deinem Wallet gutgeschrieben.",
+            'action_url' => route('dashboard')
+        ]);
+        
+        return [
+            'scenario' => 'target_not_reached_keep',
+            'success' => true,
+            'final_decision' => 'money_to_winner',
+            'payout_amount' => $netRevenue,
+            'seller_received' => 'product_kept',
+            'winner_received' => $netRevenue,
+            'platform_fee' => $platformFee,
+            'message' => 'Zielpreis nicht erreicht. Verkäufer behält Produkt, Gewinner erhält Geldpreis.'
+        ];
+    }
+    
+    /**
+     * Refund-Logik für abgebrochene Raffles
+     * Alle Teilnehmer bekommen ihr Geld zurück
+     */
+    public function refundRaffle(Raffle $raffle): array
+    {
+        DB::beginTransaction();
+        
+        try {
+            $tickets = $raffle->tickets()->where('status', 'valid')->get();
+            $refundCount = 0;
+            $totalRefunded = 0;
+            
+            foreach ($tickets as $ticket) {
+                $user = $ticket->user;
+                
+                // Geld zurück ins Wallet
+                $user->update([
+                    'wallet_balance' => DB::raw("wallet_balance + {$ticket->price}")
+                ]);
+                
+                // Refund-Transaktion erstellen
+                Transaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'refund',
+                    'amount' => $ticket->price,
+                    'balance_before' => $user->wallet_balance,
+                    'balance_after' => $user->wallet_balance + $ticket->price,
+                    'reference_type' => 'ticket',
+                    'reference_id' => $ticket->id,
+                    'status' => 'completed',
+                    'description' => "Rückerstattung: Verlosung abgebrochen"
+                ]);
+                
+                // Ticket als refunded markieren
+                $ticket->update(['status' => 'refunded']);
+                
+                $refundCount++;
+                $totalRefunded += $ticket->price;
+            }
+            
+            // Raffle als refunded markieren
+            $raffle->update(['status' => 'refunded']);
+            
+            DB::commit();
+            
+            return [
+                'success' => true,
+                'refund_count' => $refundCount,
+                'total_refunded' => $totalRefunded
+            ];
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+}
