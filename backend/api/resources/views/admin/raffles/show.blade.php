@@ -125,26 +125,47 @@
     {{-- Actions --}}
     <div class="bg-white rounded-lg shadow-md p-6">
         <h3 class="text-xl font-bold mb-4">Aktionen</h3>
-        <div class="flex gap-4 items-center">
-            @if($raffle->status === 'active')
+        <div class="flex gap-4 items-center flex-wrap">
+            @if(in_array($raffle->status, ['active', 'pending_draw']))
+                {{-- Live-Ziehung mit Animation --}}
                 <a href="{{ route('admin.raffles.live-drawing', $raffle) }}" 
-                   class="inline-flex items-center justify-center bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg font-semibold transition h-12">
-                    🎲 Live-Ziehung starten
+                   class="inline-flex items-center justify-center bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-8 py-4 rounded-lg font-bold text-lg shadow-lg transform transition-all duration-200 hover:scale-105">
+                    🎲 Live-Ziehung (mit Animation)
                 </a>
+                
+                {{-- Schnelle Ziehung ohne Animation --}}
+                <form action="{{ route('admin.raffles.draw', $raffle) }}" method="POST" class="inline-block">
+                    @csrf
+                    <button type="submit" 
+                            onclick="return confirm('Gewinner jetzt direkt ziehen (ohne Animation)?')"
+                            class="inline-flex items-center justify-center bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-8 py-4 rounded-lg font-bold text-lg shadow-lg transform transition-all duration-200 hover:scale-105">
+                        ⚡ Schnell-Ziehung (ohne Animation)
+                    </button>
+                </form>
+            @endif
+            
+            @if($raffle->status === 'active')
                 <form action="{{ route('admin.raffles.cancel', $raffle) }}" method="POST" 
                       onsubmit="return confirm('Verlosung wirklich abbrechen? Alle Teilnehmer werden erstattet.')">
                     @csrf
-                    <button type="submit" class="inline-flex items-center justify-center bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-semibold transition h-12">
+                    <button type="submit" class="inline-flex items-center justify-center bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-semibold transition">
                         ❌ Verlosung abbrechen
                     </button>
                 </form>
-            @elseif($raffle->status === 'pending_draw')
-                <form action="{{ route('admin.raffles.draw', $raffle) }}" method="POST">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center justify-center bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition h-12">
-                        🎯 Gewinner ziehen
-                    </button>
-                </form>
+            @endif
+            
+            @if($raffle->status === 'completed')
+                <div class="flex items-center gap-3 bg-green-50 px-6 py-4 rounded-lg border border-green-200">
+                    <span class="text-2xl">✅</span>
+                    <div>
+                        <p class="font-bold text-green-800">Ziehung abgeschlossen</p>
+                        <p class="text-sm text-green-600">Gewinner: 
+                            @if($raffle->winnerTicket)
+                                {{ $raffle->winnerTicket->user->first_name ?? $raffle->winnerTicket->user->email }}
+                            @endif
+                        </p>
+                    </div>
+                </div>
             @endif
         </div>
     </div>

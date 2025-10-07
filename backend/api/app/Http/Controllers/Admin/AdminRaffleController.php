@@ -132,7 +132,7 @@ class AdminRaffleController extends Controller
     public function liveDrawing(Raffle $raffle)
     {
         // Prüfe ob die Verlosung bereit ist
-        if ($raffle->status !== 'active') {
+        if (!in_array($raffle->status, ['active', 'pending_draw'])) {
             return redirect()->route('admin.raffles.show', $raffle)
                 ->with('error', 'Diese Verlosung kann nicht gezogen werden. Status: ' . $raffle->status);
         }
@@ -157,7 +157,7 @@ class AdminRaffleController extends Controller
             DB::beginTransaction();
 
             // Validierungen
-            if ($raffle->status !== 'active') {
+            if (!in_array($raffle->status, ['active', 'pending_draw'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Diese Verlosung ist nicht aktiv.'
