@@ -57,20 +57,23 @@ class AdminRaffleController extends Controller
 
         $raffles = $query->paginate(20);
 
+        // Aktueller Status-Filter
+        $status = $request->get('status', 'all');
+
         // Statistiken
         $stats = [
             'total' => Raffle::count(),
+            'scheduled' => Raffle::where('status', 'pending')->count(),
             'active' => Raffle::where('status', 'active')->count(),
-            'pending' => Raffle::where('status', 'pending')->count(),
+            'pending_draw' => Raffle::where('status', 'active')
+                ->where('ends_at', '<', now())
+                ->count(),
             'completed' => Raffle::where('status', 'completed')->count(),
             'cancelled' => Raffle::where('status', 'cancelled')->count(),
             'total_revenue' => Raffle::where('status', 'completed')->sum('total_revenue'),
-            'pending_draws' => Raffle::where('status', 'active')
-                ->where('ends_at', '<', now())
-                ->count(),
         ];
 
-        return view('admin.raffles.index', compact('raffles', 'stats'));
+        return view('admin.raffles.index', compact('raffles', 'stats', 'status'));
     }
 
     /**
@@ -100,11 +103,23 @@ class AdminRaffleController extends Controller
         $topBuyers = DB::table('tickets')
             ->join('users', 'tickets.user_id', '=', 'users.id')
             ->where('tickets.raffle_id', $raffle->id)
-            ->select('users.name', 'users.email', DB::raw('COUNT(*) as ticket_count'), DB::raw('SUM(tickets.price) as total_spent'))
-            ->groupBy('users.id', 'users.name', 'users.email')
+            ->select(
+                'users.id',
+                'users.email',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('COUNT(*) as ticket_count'),
+                DB::raw('SUM(tickets.price) as total_spent')
+            )
+            ->groupBy('users.id', 'users.email', 'users.first_name', 'users.last_name')
             ->orderByDesc('ticket_count')
             ->limit(10)
-            ->get();
+            ->get()
+            ->map(function ($buyer) {
+                // Display Name: "Vorname Nachname" oder Email als Fallback
+                $buyer->display_name = trim($buyer->first_name . ' ' . $buyer->last_name) ?: $buyer->email;
+                return $buyer;
+            });
 
         return view('admin.raffles.show', compact('raffle', 'ticketStats', 'topBuyers'));
     }
