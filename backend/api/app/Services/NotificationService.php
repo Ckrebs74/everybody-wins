@@ -60,6 +60,16 @@ class NotificationService
 
         // Email senden (in Queue)
         try {
+            // 🔧 PHASE 1 FIX: Lade Beziehungen VOR Queue (verhindert Serialization-Fehler)
+            $raffle->loadMissing([
+                'winnerTicket',
+                'winnerTicket.user',
+                'product',
+                'product.seller',
+                'product.category',
+                'product.images'
+            ]);
+
             \Illuminate\Support\Facades\Mail::to($winner->email)
                 ->queue(new \App\Mail\WinnerNotification($raffle, $winner));
                 
@@ -71,7 +81,8 @@ class NotificationService
             Log::error('Failed to queue winner email', [
                 'raffle_id' => $raffle->id,
                 'winner_id' => $winner->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
         }
 
@@ -118,6 +129,16 @@ class NotificationService
 
         // Email senden (in Queue)
         try {
+            // 🔧 PHASE 1 FIX: Lade Beziehungen VOR Queue (verhindert Serialization-Fehler)
+            $raffle->loadMissing([
+                'winnerTicket',
+                'winnerTicket.user',
+                'product',
+                'product.seller',
+                'product.category',
+                'product.images'
+            ]);
+
             \Illuminate\Support\Facades\Mail::to($seller->email)
                 ->queue(new \App\Mail\SellerPayoutNotification($raffle, $seller));
                 
@@ -129,7 +150,8 @@ class NotificationService
             Log::error('Failed to queue seller email', [
                 'raffle_id' => $raffle->id,
                 'seller_id' => $seller->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
         }
 

@@ -1,103 +1,274 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services;
 
+use App\Models\User;
 use App\Models\Notification;
-use App\Services\NotificationService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Raffle;
+use Illuminate\Support\Facades\Log;
 
-class NotificationController extends Controller
+class NotificationService
 {
-    protected NotificationService $notificationService;
-
-    public function __construct(NotificationService $notificationService)
-    {
-        $this->middleware('auth');
-        $this->notificationService = $notificationService;
+    /**
+     * Erstelle eine Benachrichtigung für einen User
+     */
+    public function createNotification(
+        User $user,
+        string $type,
+        string $title,
+        string $message,
+        ?string $actionUrl = null
+    ): Notification {
+        return Notification::create([
+            'user_id' => $user->id,
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'action_url' => $actionUrl,
+            'read_at' => null
+        ]);
     }
 
     /**
-     * Zeige alle Benachrichtigungen
+     * Benachrichtige den Gewinner einer Verlosung
      */
-    public function index()
+    public function notifyWinner(Raffle $raffle): void
     {
-        $user = Auth::user();
-        
-        $notifications = $user->notifications()
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $winner = $raffle->winnerTicket->user;
+        $product = $raffle->product;
 
-        $unreadCount = $this->notificationService->getUnreadCount($user);
+        // Bestimme was der Gewinner erhält
+        if ($raffle->target_reached || $raffle->product->decision_type === 'give') {
+            // Gewinner erhält das Produkt
+            $title = "🎉 Glückwunsch! Du hast gewonnen!";
+            $message = "Du hast die Verlosung für '{$product->title}' gewonnen! Das Produkt gehört jetzt dir.";
+        } else {
+            // Gewinner erhält Geldpreis
+            $netRevenue = $raffle->total_revenue - $raffle->platform_fee;
+            $title = "🎉 Glückwunsch! Du hast gewonnen!";
+            $message = "Du hast die Verlosung für '{$product->title}' gewonnen! Du erhältst {$netRevenue}€.";
+        }
 
-        return view('notifications.index', compact('notifications', 'unreadCount'));
+        // Dashboard-Benachrichtigung
+        $this->createNotification(
+            user: $winner,
+            type: 'winner_notification',
+            title: $title,
+            message: $message,
+            actionUrl: route('raffles.show', $raffle->product->slug)
+        );
+
+        // Email senden (in Queue)
+        try {
+            // 🔧 PHASE 1 FIX: Lade Beziehungen VOR Queue (verhindert Serialization-Fehler)
+            $raffle->loadMissing([
+                'winnerTicket',
+                'winnerTicket.user',
+                'product',
+                'product.seller',
+                'product.category',
+                'product.images'
+            ]);
+
+            \Illuminate\Support\Facades\Mail::to($winner->email)
+                ->queue(new \App\Mail\WinnerNotification($raffle, $winner));
+                
+            Log::info('Winner email queued', [
+                'raffle_id' => $raffle->id,
+                'winner_id' => $winner->id
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to queue winner email', [
+                'raffle_id' => $raffle->id,
+                'winner_id' => $winner->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+
+        Log::info('Winner notification created', [
+            'raffle_id' => $raffle->id,
+            'winner_id' => $winner->id
+        ]);
+    }
+
+    /**
+     * Benachrichtige den Verkäufer über den Abschluss
+     */
+    public function notifySeller(Raffle $raffle): void
+    {
+        $seller = $raffle->product->seller;
+        $product = $raffle->product;
+
+        // Bestimme Nachricht basierend auf Szenario
+        if ($raffle->target_reached) {
+            // Zielpreis erreicht - Verkäufer erhält Geld
+            $title = "💰 Zielpreis erreicht!";
+            $message = "Deine Verlosung für '{$product->title}' ist abgeschlossen. Du erhältst {$raffle->target_price}€.";
+        } else {
+            if ($product->decision_type === 'give') {
+                // Zielpreis nicht erreicht, aber Produkt abgegeben
+                $netRevenue = $raffle->total_revenue - $raffle->platform_fee;
+                $title = "📦 Verlosung abgeschlossen";
+                $message = "Deine Verlosung für '{$product->title}' ist abgeschlossen. Du erhältst {$netRevenue}€. Das Produkt geht an den Gewinner.";
+            } else {
+                // Zielpreis nicht erreicht, Produkt behalten
+                $title = "🔄 Verlosung abgeschlossen - Produkt zurück";
+                $message = "Deine Verlosung für '{$product->title}' ist abgeschlossen. Der Zielpreis wurde nicht erreicht, du behältst das Produkt.";
+            }
+        }
+
+        // Dashboard-Benachrichtigung
+        $this->createNotification(
+            user: $seller,
+            type: 'seller_payout',
+            title: $title,
+            message: $message,
+            actionUrl: route('raffles.show', $product->slug)
+        );
+
+        // Email senden (in Queue)
+        try {
+            // 🔧 PHASE 1 FIX: Lade Beziehungen VOR Queue (verhindert Serialization-Fehler)
+            $raffle->loadMissing([
+                'winnerTicket',
+                'winnerTicket.user',
+                'product',
+                'product.seller',
+                'product.category',
+                'product.images'
+            ]);
+
+            \Illuminate\Support\Facades\Mail::to($seller->email)
+                ->queue(new \App\Mail\SellerPayoutNotification($raffle, $seller));
+                
+            Log::info('Seller email queued', [
+                'raffle_id' => $raffle->id,
+                'seller_id' => $seller->id
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to queue seller email', [
+                'raffle_id' => $raffle->id,
+                'seller_id' => $seller->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+
+        Log::info('Seller notification created', [
+            'raffle_id' => $raffle->id,
+            'seller_id' => $seller->id
+        ]);
+    }
+
+    /**
+     * Benachrichtige alle Verlierer (optional)
+     */
+    public function notifyLosers(Raffle $raffle): void
+    {
+        $loserTickets = $raffle->tickets()
+            ->where('status', 'loser')
+            ->with('user')
+            ->get();
+
+        $product = $raffle->product;
+
+        foreach ($loserTickets as $ticket) {
+            $this->createNotification(
+                user: $ticket->user,
+                type: 'raffle_completed',
+                title: "🎲 Verlosung beendet",
+                message: "Die Verlosung für '{$product->title}' ist abgeschlossen. Leider hast du dieses Mal nicht gewonnen. Viel Glück beim nächsten Mal!",
+                actionUrl: route('raffles.show', $product->slug)
+            );
+        }
+
+        Log::info('Loser notifications created', [
+            'raffle_id' => $raffle->id,
+            'count' => $loserTickets->count()
+        ]);
+    }
+
+    /**
+     * Benachrichtige User über Wallet-Einzahlung
+     */
+    public function notifyWalletDeposit(User $user, float $amount): void
+    {
+        $this->createNotification(
+            user: $user,
+            type: 'wallet_deposit',
+            title: "💳 Einzahlung erfolgreich",
+            message: "Deine Einzahlung von {$amount}€ wurde erfolgreich verarbeitet.",
+            actionUrl: route('dashboard')
+        );
+    }
+
+    /**
+     * Benachrichtige User über Spending Limit
+     */
+    public function notifySpendingLimit(User $user): void
+    {
+        $this->createNotification(
+            user: $user,
+            type: 'spending_limit',
+            title: "⚠️ Ausgabenlimit erreicht",
+            message: "Du hast dein Ausgabenlimit von 10€ pro Stunde erreicht. Bitte warte, bevor du weitere Lose kaufst.",
+            actionUrl: route('dashboard')
+        );
+    }
+
+    /**
+     * Benachrichtige User über Auszahlung
+     */
+    public function notifyWithdrawal(User $user, float $amount): void
+    {
+        $this->createNotification(
+            user: $user,
+            type: 'withdrawal',
+            title: "💸 Auszahlung wird bearbeitet",
+            message: "Deine Auszahlung von {$amount}€ wird bearbeitet und wird in 2-3 Werktagen auf deinem Konto sein.",
+            actionUrl: route('dashboard')
+        );
     }
 
     /**
      * Markiere Benachrichtigung als gelesen
      */
-    public function markAsRead(Notification $notification)
+    public function markAsRead(Notification $notification): void
     {
-        // Sicherheit: Nur eigene Benachrichtigungen
-        if ($notification->user_id !== Auth::id()) {
-            abort(403);
+        if ($notification->read_at === null) {
+            $notification->update(['read_at' => now()]);
         }
-
-        $this->notificationService->markAsRead($notification);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Benachrichtigung als gelesen markiert'
-        ]);
     }
 
     /**
-     * Markiere alle Benachrichtigungen als gelesen
+     * Markiere alle Benachrichtigungen eines Users als gelesen
      */
-    public function markAllAsRead()
+    public function markAllAsRead(User $user): void
     {
-        $this->notificationService->markAllAsRead(Auth::user());
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Alle Benachrichtigungen als gelesen markiert'
-        ]);
+        $user->notifications()
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
     }
 
     /**
-     * Lösche Benachrichtigung
+     * Hole ungelesene Benachrichtigungen
      */
-    public function destroy(Notification $notification)
+    public function getUnreadNotifications(User $user)
     {
-        // Sicherheit: Nur eigene Benachrichtigungen
-        if ($notification->user_id !== Auth::id()) {
-            abort(403);
-        }
-
-        $notification->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Benachrichtigung gelöscht'
-        ]);
+        return $user->notifications()
+            ->whereNull('read_at')
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     /**
-     * Hole ungelesene Benachrichtigungen (für Dropdown)
+     * Zähle ungelesene Benachrichtigungen
      */
-    public function getUnread()
+    public function getUnreadCount(User $user): int
     {
-        $user = Auth::user();
-        
-        $notifications = $this->notificationService->getUnreadNotifications($user)
-            ->take(5); // Nur die letzten 5 für Dropdown
-
-        $unreadCount = $this->notificationService->getUnreadCount($user);
-
-        return response()->json([
-            'success' => true,
-            'notifications' => $notifications,
-            'unreadCount' => $unreadCount
-        ]);
+        return $user->notifications()
+            ->whereNull('read_at')
+            ->count();
     }
 }
