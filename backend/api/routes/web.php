@@ -9,6 +9,10 @@ use App\Http\Controllers\SellerController;
 use App\Http\Controllers\Admin\AdminRaffleController;
 use Illuminate\Support\Facades\Route;
 
+// =====================================================
+// PUBLIC ROUTES
+// =====================================================
+
 // Homepage
 Route::get('/', function () {
     $activeRaffles = \App\Models\Raffle::with([
@@ -23,7 +27,14 @@ Route::get('/', function () {
     return view('welcome', compact('activeRaffles'));
 })->name('home');
 
-// Auth Routes (Gast)
+// Public Raffle Routes - WICHTIG: Slug statt ID!
+Route::get('/raffles', [RaffleController::class, 'index'])->name('raffles.index');
+Route::get('/raffles/{slug}', [RaffleController::class, 'show'])->name('raffles.show');
+
+// =====================================================
+// GUEST ROUTES (nur für nicht eingeloggte User)
+// =====================================================
+
 Route::middleware('guest')->group(function () {
     Route::get('/register', fn() => view('auth.register'))->name('register');
     Route::post('/register', [AuthController::class, 'register']);
@@ -31,8 +42,12 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
-// Auth Routes (Eingeloggt)
+// =====================================================
+// AUTHENTICATED ROUTES (für alle eingeloggten User)
+// =====================================================
+
 Route::middleware('auth')->group(function () {
+    // Logout
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     
     // Dashboard
@@ -50,11 +65,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.index');
 });
 
-// Public Raffle Routes - WICHTIG: Slug statt ID!
-Route::get('/raffles', [RaffleController::class, 'index'])->name('raffles.index');
-Route::get('/raffles/{slug}', [RaffleController::class, 'show'])->name('raffles.show');
+// =====================================================
+// SELLER ROUTES (nur für Verkäufer und Admins)
+// =====================================================
 
-// Verkäufer-Bereich (nur für Verkäufer und Admins)
 Route::middleware(['auth', 'seller'])->prefix('seller')->name('seller.')->group(function () {
     
     // Dashboard
@@ -114,10 +128,10 @@ Route::middleware(['auth', 'seller'])->group(function () {
 });
 
 // =====================================================
-// ADMIN RAFFLE MANAGEMENT ROUTES
+// ADMIN ROUTES (nur für Admins)
 // =====================================================
 
-Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     
     // Admin Raffle Dashboard
     Route::get('/raffles', [AdminRaffleController::class, 'index'])
@@ -127,7 +141,7 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
     Route::get('/raffles/{raffle}', [AdminRaffleController::class, 'show'])
         ->name('raffles.show');
     
-    // Live Drawing View (Public-Facing)
+    // Live Drawing View (Admin-Facing)
     Route::get('/raffles/{raffle}/live-drawing', [AdminRaffleController::class, 'liveDrawing'])
         ->name('raffles.live-drawing');
     
@@ -154,10 +168,10 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
 });
 
 // =====================================================
-// PUBLIC LIVE DRAWING ROUTE (Without Auth)
+// PUBLIC LIVE DRAWING ROUTE (ohne Auth)
 // =====================================================
 
-// Falls du Live-Drawings öffentlich machen willst (z.B. auf Twitch/YouTube)
+// Falls Live-Drawings öffentlich sein sollen (z.B. auf Twitch/YouTube)
 Route::get('/live/{raffle}', function(\App\Models\Raffle $raffle) {
     return view('admin.raffles.live-drawing', compact('raffle'));
 })->name('public.live-drawing');
