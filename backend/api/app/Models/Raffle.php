@@ -71,6 +71,11 @@ class Raffle extends Model
         return $this->belongsTo(Ticket::class, 'winner_ticket_id');
     }
 
+     public function winnerTicket()
+   {
+       return $this->belongsTo(\App\Models\Ticket::class, 'winner_ticket_id');
+   }
+
     /**
      * Scope: Nur aktive Verlosungen
      */
