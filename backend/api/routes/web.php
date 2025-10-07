@@ -7,6 +7,7 @@ use App\Http\Controllers\TicketController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\Admin\AdminRaffleController;
+use App\Http\Controllers\NotificationController; // 🔔 NEU
 use Illuminate\Support\Facades\Route;
 
 // =====================================================
@@ -63,6 +64,32 @@ Route::middleware('auth')->group(function () {
     // Tickets
     Route::post('/raffles/{raffle}/buy', [TicketController::class, 'purchase'])->name('tickets.purchase');
     Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.index');
+    
+    // =====================================================
+    // 🔔 NEU: NOTIFICATION ROUTES
+    // =====================================================
+    
+    // Notification Übersicht
+    Route::get('/notifications', [NotificationController::class, 'index'])
+        ->name('notifications.index');
+    
+    // Benachrichtigung als gelesen markieren
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead'])
+        ->name('notifications.read');
+    
+    // Alle Benachrichtigungen als gelesen markieren
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])
+        ->name('notifications.read-all');
+    
+    // Benachrichtigung löschen
+    Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])
+        ->name('notifications.destroy');
+    
+    // API: Ungelesene Benachrichtigungen für Dropdown (AJAX)
+    Route::get('/api/notifications/unread', [NotificationController::class, 'getUnread'])
+        ->name('api.notifications.unread');
+    
+    // 🔔 ENDE NOTIFICATION ROUTES
 });
 
 // =====================================================

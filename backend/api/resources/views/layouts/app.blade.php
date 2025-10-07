@@ -10,6 +10,9 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    {{-- 🔔 NEU: Alpine.js für Notification Dropdown --}}
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
@@ -46,6 +49,10 @@
                         <a href="{{ route('dashboard') }}" class="text-gray-700 hover:text-yellow-600 px-3 py-2 rounded-md text-sm font-medium">
                             Dashboard
                         </a>
+                        
+                        {{-- 🔔 NEU: NOTIFICATION DROPDOWN --}}
+                        @include('layouts.partials.notification-dropdown')
+                        
                         <form method="POST" action="{{ route('logout') }}" class="inline">
                             @csrf
                             <button type="submit" class="text-gray-700 hover:text-yellow-600 px-3 py-2 rounded-md text-sm font-medium">

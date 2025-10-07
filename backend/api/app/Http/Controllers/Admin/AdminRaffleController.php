@@ -7,6 +7,7 @@ use App\Models\Raffle;
 use App\Models\Product;
 use App\Services\RaffleDrawService;
 use App\Services\PayoutService;
+use App\Services\NotificationService; // 🔔 NEU: Notification Service
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,14 +16,17 @@ class AdminRaffleController extends Controller
 {
     protected RaffleDrawService $drawService;
     protected PayoutService $payoutService;
+    protected NotificationService $notificationService; // 🔔 NEU
 
-    public function __construct(RaffleDrawService $drawService, PayoutService $payoutService)
-    {
-        // MIDDLEWARE ENTFERNT - wird bereits in routes/web.php mit middleware(['auth', 'admin']) definiert
-        // Die Middleware-Prüfung ist nicht mehr nötig, da sie bereits in den Routes erfolgt
-        
+    // 🔔 GEÄNDERT: NotificationService im Constructor hinzugefügt
+    public function __construct(
+        RaffleDrawService $drawService, 
+        PayoutService $payoutService,
+        NotificationService $notificationService // 🔔 NEU
+    ) {
         $this->drawService = $drawService;
         $this->payoutService = $payoutService;
+        $this->notificationService = $notificationService; // 🔔 NEU
     }
 
     /**
@@ -149,7 +153,7 @@ class AdminRaffleController extends Controller
 
     /**
      * Live-Ziehung durchführen (AJAX)
-     * GEFIXT: winner_ticket_id, status 'completed', winner_name
+     * 🔔 ERWEITERT: Notifications werden jetzt versendet
      */
     public function executeLiveDraw(Raffle $raffle)
     {
@@ -164,7 +168,6 @@ class AdminRaffleController extends Controller
                 ], 400);
             }
 
-            // BUG FIX 1: winner_ticket_id statt winner_id
             if ($raffle->winner_ticket_id) {
                 return response()->json([
                     'success' => false,
@@ -184,8 +187,7 @@ class AdminRaffleController extends Controller
             // Zufälliges Ticket auswählen
             $winningTicket = $tickets->random();
             
-            // BUG FIX 2: Nur winner_ticket_id setzen (nicht winner_id + winning_ticket_id)
-            // BUG FIX 3: Status 'completed' statt 'drawn'
+            // Raffle aktualisieren
             $raffle->update([
                 'winner_ticket_id' => $winningTicket->id,
                 'drawn_at' => now(),
@@ -197,13 +199,39 @@ class AdminRaffleController extends Controller
 
             DB::commit();
 
+            // ========================================
+            // 🔔 NEU: NOTIFICATIONS SENDEN
+            // ========================================
+            try {
+                // 1. Gewinner benachrichtigen
+                $this->notificationService->notifyWinner($raffle);
+                
+                // 2. Verkäufer benachrichtigen
+                $this->notificationService->notifySeller($raffle);
+                
+                // 3. Optional: Verlierer benachrichtigen (auskommentiert für Performance)
+                // $this->notificationService->notifyLosers($raffle);
+                
+                Log::info('All notifications sent successfully', [
+                    'raffle_id' => $raffle->id
+                ]);
+            } catch (\Exception $e) {
+                // Notification-Fehler loggen, aber nicht die ganze Ziehung abbrechen
+                Log::error('Failed to send notifications', [
+                    'raffle_id' => $raffle->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+            // ========================================
+
             Log::info('Live-Ziehung erfolgreich', [
                 'raffle_id' => $raffle->id,
                 'winner_ticket_id' => $winningTicket->id,
                 'winner_user_id' => $winningTicket->user_id
             ]);
 
-            // BUG FIX 4: User hat first_name/last_name, nicht name
+            // Winner Name
             $winnerName = trim($winningTicket->user->first_name . ' ' . $winningTicket->user->last_name);
             if (empty($winnerName)) {
                 $winnerName = $winningTicket->user->email;
