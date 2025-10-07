@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class Ticket extends Model
 {
@@ -16,67 +16,93 @@ class Ticket extends Model
         'ticket_number',
         'price',
         'status',
-        'purchased_at',
+        'is_bonus_ticket'
     ];
 
     protected $casts = [
-        'purchased_at' => 'datetime',
         'price' => 'decimal:2',
+        'is_bonus_ticket' => 'boolean',
+        'purchased_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime'
     ];
 
+    // purchased_at als created_at verwenden (Alias für besseres Verständnis)
+    const CREATED_AT = 'purchased_at';
+    // updated_at ist jetzt vorhanden
+    const UPDATED_AT = 'updated_at';
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($ticket) {
+            if (empty($ticket->ticket_number)) {
+                $ticket->ticket_number = self::generateTicketNumber();
+            }
+            if (empty($ticket->purchased_at)) {
+                $ticket->purchased_at = now();
+            }
+        });
+    }
+
     /**
-     * Die Verlosung, zu der dieses Ticket gehört
+     * Get the raffle that owns the ticket
      */
-    public function raffle(): BelongsTo
+    public function raffle()
     {
         return $this->belongsTo(Raffle::class);
     }
 
     /**
-     * Der User, der dieses Ticket gekauft hat
+     * Get the user that owns the ticket
      */
-    public function user(): BelongsTo
+    public function user()
     {
         return $this->belongsTo(User::class);
     }
 
     /**
-     * Das Produkt über die Raffle-Beziehung
+     * Get the product through the raffle
      */
-    public function product(): BelongsTo
+    public function product()
     {
-        return $this->raffle->product();
+        return $this->hasOneThrough(Product::class, Raffle::class, 'id', 'id', 'raffle_id', 'product_id');
     }
 
     /**
-     * Scope: Nur aktive Tickets
+     * Generate unique ticket number
      */
-    public function scopeActive($query)
+    private static function generateTicketNumber(): string
     {
-        return $query->where('status', 'active');
+        do {
+            $number = 'TKT-' . strtoupper(uniqid());
+        } while (self::where('ticket_number', $number)->exists());
+
+        return $number;
     }
 
     /**
-     * Scope: Gewinnende Tickets
+     * Scope for valid tickets
      */
-    public function scopeWinning($query)
+    public function scopeValid($query)
     {
-        return $query->where('status', 'won');
+        return $query->where('status', 'valid');
     }
 
     /**
-     * Prüft ob dieses Ticket gewonnen hat
+     * Scope for winner tickets
      */
-    public function isWinning(): bool
+    public function scopeWinner($query)
     {
-        return $this->status === 'won';
+        return $query->where('status', 'winner');
     }
 
     /**
-     * Markiert dieses Ticket als Gewinner
+     * Check if ticket is a winner
      */
-    public function markAsWinner(): void
+    public function isWinner(): bool
     {
-        $this->update(['status' => 'won']);
+        return $this->status === 'winner';
     }
 }
