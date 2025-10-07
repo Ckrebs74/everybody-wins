@@ -7,7 +7,7 @@ use App\Models\Raffle;
 use App\Models\Product;
 use App\Services\RaffleDrawService;
 use App\Services\PayoutService;
-use App\Services\NotificationService; // 🔔 NEU: Notification Service
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,17 +16,16 @@ class AdminRaffleController extends Controller
 {
     protected RaffleDrawService $drawService;
     protected PayoutService $payoutService;
-    protected NotificationService $notificationService; // 🔔 NEU
+    protected NotificationService $notificationService;
 
-    // 🔔 GEÄNDERT: NotificationService im Constructor hinzugefügt
     public function __construct(
         RaffleDrawService $drawService, 
         PayoutService $payoutService,
-        NotificationService $notificationService // 🔔 NEU
+        NotificationService $notificationService
     ) {
         $this->drawService = $drawService;
         $this->payoutService = $payoutService;
-        $this->notificationService = $notificationService; // 🔔 NEU
+        $this->notificationService = $notificationService;
     }
 
     /**
@@ -153,7 +152,6 @@ class AdminRaffleController extends Controller
 
     /**
      * Live-Ziehung durchführen (AJAX)
-     * 🔔 ERWEITERT: Notifications werden jetzt versendet
      */
     public function executeLiveDraw(Raffle $raffle)
     {
@@ -187,12 +185,11 @@ class AdminRaffleController extends Controller
             // Zufälliges Ticket auswählen
             $winningTicket = $tickets->random();
             
-            // Raffle aktualisieren
-            $raffle->update([
-                'winner_ticket_id' => $winningTicket->id,
-                'drawn_at' => now(),
-                'status' => 'completed'
-            ]);
+            // 🔧 FIX: Attribute direkt setzen (statt update()) damit sie im Speicher sind
+            $raffle->winner_ticket_id = $winningTicket->id;
+            $raffle->drawn_at = now();
+            $raffle->status = 'completed';
+            $raffle->save();
 
             // Auszahlung durchführen
             $this->payoutService->processRafflePayout($raffle);
@@ -200,7 +197,7 @@ class AdminRaffleController extends Controller
             DB::commit();
 
             // ========================================
-            // 🔔 NEU: NOTIFICATIONS SENDEN
+            // NOTIFICATIONS SENDEN
             // ========================================
             try {
                 // 1. Gewinner benachrichtigen
