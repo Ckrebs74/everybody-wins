@@ -15,25 +15,35 @@ class Raffle extends Model
         'product_id',
         'starts_at',
         'ends_at',
+        'drawn_at',
         'target_price',
         'platform_fee',
         'total_target',
         'status',
+        'target_reached',
         'tickets_sold',
         'total_revenue',
-        'winner_id',
-        'winning_ticket_id',
-        'drawn_at',
+        'unique_participants',
+        'winner_ticket_id',      // ✅ KORRIGIERT: Das ist das richtige Feld!
+        'winner_notified_at',
+        'prize_claimed',
+        'final_decision',
+        'payout_amount',
+        'random_seed',
     ];
 
     protected $casts = [
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
         'drawn_at' => 'datetime',
+        'winner_notified_at' => 'datetime',
         'target_price' => 'decimal:2',
         'platform_fee' => 'decimal:2',
         'total_target' => 'decimal:2',
         'total_revenue' => 'decimal:2',
+        'payout_amount' => 'decimal:2',
+        'target_reached' => 'boolean',
+        'prize_claimed' => 'boolean',
     ];
 
     /**
@@ -53,19 +63,12 @@ class Raffle extends Model
     }
 
     /**
-     * Der Gewinner der Verlosung
-     */
-    public function winner(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'winner_id');
-    }
-
-    /**
      * Das gewinnende Ticket
+     * ✅ KORRIGIERT: Verwendet jetzt winner_ticket_id (nicht winning_ticket_id)
      */
     public function winningTicket(): BelongsTo
     {
-        return $this->belongsTo(Ticket::class, 'winning_ticket_id');
+        return $this->belongsTo(Ticket::class, 'winner_ticket_id');
     }
 
     /**
@@ -84,7 +87,7 @@ class Raffle extends Model
     {
         return $query->where('status', 'active')
                     ->where('ends_at', '<=', now())
-                    ->whereNull('winner_id');
+                    ->whereNull('winner_ticket_id');
     }
 
     /**
@@ -118,7 +121,7 @@ class Raffle extends Model
     {
         return $this->status === 'active' 
             && $this->ends_at <= now() 
-            && !$this->winner_id;
+            && !$this->winner_ticket_id;
     }
 
     /**
@@ -163,11 +166,13 @@ class Raffle extends Model
     public function getStatusText(): string
     {
         return match($this->status) {
+            'scheduled' => 'Geplant',
             'pending' => 'Ausstehend',
             'active' => 'Aktiv',
-            'drawn' => 'Gezogen',
+            'pending_draw' => 'Bereit zur Ziehung',
             'completed' => 'Abgeschlossen',
             'cancelled' => 'Abgebrochen',
+            'refunded' => 'Erstattet',
             default => 'Unbekannt'
         };
     }
@@ -178,11 +183,13 @@ class Raffle extends Model
     public function getStatusColor(): string
     {
         return match($this->status) {
+            'scheduled' => 'gray',
             'pending' => 'gray',
             'active' => 'green',
-            'drawn' => 'blue',
-            'completed' => 'purple',
+            'pending_draw' => 'yellow',
+            'completed' => 'blue',
             'cancelled' => 'red',
+            'refunded' => 'orange',
             default => 'gray'
         };
     }

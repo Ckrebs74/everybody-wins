@@ -30,7 +30,7 @@ class AdminRaffleController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Raffle::with(['product.seller', 'product.category', 'winner']);
+        $query = Raffle::with(['product.seller', 'product.category', 'product.images']);
 
         // Filter nach Status
         if ($request->has('status') && $request->status !== 'all') {
@@ -63,11 +63,9 @@ class AdminRaffleController extends Controller
         // Statistiken
         $stats = [
             'total' => Raffle::count(),
-            'scheduled' => Raffle::where('status', 'pending')->count(),
+            'scheduled' => Raffle::where('status', 'scheduled')->count(),
             'active' => Raffle::where('status', 'active')->count(),
-            'pending_draw' => Raffle::where('status', 'active')
-                ->where('ends_at', '<', now())
-                ->count(),
+            'pending_draw' => Raffle::where('status', 'pending_draw')->count(),
             'completed' => Raffle::where('status', 'completed')->count(),
             'cancelled' => Raffle::where('status', 'cancelled')->count(),
             'total_revenue' => Raffle::where('status', 'completed')->sum('total_revenue'),
@@ -85,17 +83,21 @@ class AdminRaffleController extends Controller
             'product.seller',
             'product.category',
             'product.images',
-            'tickets.user',
-            'winner'
+            'tickets.user'
         ]);
+
+        // Gewinner-Ticket laden falls vorhanden
+        if ($raffle->winner_ticket_id) {
+            $raffle->load('winnerTicket.user');
+        }
 
         // Ticket-Statistiken
         $ticketStats = [
             'total_sold' => $raffle->tickets()->count(),
-            'total_revenue' => $raffle->tickets()->sum('price'),
-            'unique_buyers' => $raffle->tickets()->distinct('user_id')->count('user_id'),
-            'avg_tickets_per_user' => $raffle->tickets()->count() > 0 
-                ? round($raffle->tickets()->count() / $raffle->tickets()->distinct('user_id')->count('user_id'), 2)
+            'total_revenue' => $raffle->total_revenue,
+            'unique_buyers' => $raffle->unique_participants,
+            'avg_tickets_per_user' => $raffle->tickets()->count() > 0 && $raffle->unique_participants > 0
+                ? round($raffle->tickets()->count() / $raffle->unique_participants, 2)
                 : 0,
         ];
 
@@ -147,6 +149,7 @@ class AdminRaffleController extends Controller
 
     /**
      * Live-Ziehung durchführen (AJAX)
+     * GEFIXT: winner_ticket_id, status 'completed', winner_name
      */
     public function executeLiveDraw(Raffle $raffle)
     {
@@ -161,7 +164,8 @@ class AdminRaffleController extends Controller
                 ], 400);
             }
 
-            if ($raffle->winner_id) {
+            // BUG FIX 1: winner_ticket_id statt winner_id
+            if ($raffle->winner_ticket_id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Diese Verlosung wurde bereits gezogen.'
@@ -180,12 +184,12 @@ class AdminRaffleController extends Controller
             // Zufälliges Ticket auswählen
             $winningTicket = $tickets->random();
             
-            // Gewinner setzen
+            // BUG FIX 2: Nur winner_ticket_id setzen (nicht winner_id + winning_ticket_id)
+            // BUG FIX 3: Status 'completed' statt 'drawn'
             $raffle->update([
-                'winner_id' => $winningTicket->user_id,
-                'winning_ticket_id' => $winningTicket->id,
+                'winner_ticket_id' => $winningTicket->id,
                 'drawn_at' => now(),
-                'status' => 'drawn'
+                'status' => 'completed'
             ]);
 
             // Auszahlung durchführen
@@ -195,15 +199,21 @@ class AdminRaffleController extends Controller
 
             Log::info('Live-Ziehung erfolgreich', [
                 'raffle_id' => $raffle->id,
-                'winner_id' => $winningTicket->user_id,
-                'ticket_id' => $winningTicket->id
+                'winner_ticket_id' => $winningTicket->id,
+                'winner_user_id' => $winningTicket->user_id
             ]);
+
+            // BUG FIX 4: User hat first_name/last_name, nicht name
+            $winnerName = trim($winningTicket->user->first_name . ' ' . $winningTicket->user->last_name);
+            if (empty($winnerName)) {
+                $winnerName = $winningTicket->user->email;
+            }
 
             return response()->json([
                 'success' => true,
                 'winner' => [
                     'id' => $winningTicket->user_id,
-                    'name' => $winningTicket->user->name,
+                    'winner_name' => $winnerName,
                     'email' => $winningTicket->user->email,
                     'ticket_number' => $winningTicket->ticket_number,
                 ],
@@ -235,11 +245,13 @@ class AdminRaffleController extends Controller
     public function draw(Raffle $raffle)
     {
         try {
-            $result = $this->drawService->drawWinner($raffle);
+            $result = $this->drawService->drawRaffle($raffle);
+            
+            $winnerName = $result['winner_ticket']->user->first_name ?? 'Gewinner';
 
             return redirect()
                 ->route('admin.raffles.show', $raffle)
-                ->with('success', 'Gewinner erfolgreich gezogen: ' . $result['winner']->name);
+                ->with('success', 'Gewinner erfolgreich gezogen: ' . $winnerName);
 
         } catch (\Exception $e) {
             return redirect()
