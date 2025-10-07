@@ -91,8 +91,9 @@ class RaffleDrawService
      */
     protected function validateRaffleForDraw(Raffle $raffle): void
     {
-        if ($raffle->status !== 'active') {
-            throw new \Exception("Raffle must be active to draw. Current status: {$raffle->status}");
+        // Akzeptiere sowohl 'active' als auch 'pending_draw'
+        if (!in_array($raffle->status, ['active', 'pending_draw'])) {
+            throw new \Exception("Raffle must be active or pending_draw to draw. Current status: {$raffle->status}");
         }
         
         if ($raffle->tickets_sold === 0) {
@@ -103,7 +104,7 @@ class RaffleDrawService
         $timeExpired = now()->greaterThanOrEqualTo($raffle->ends_at);
         $targetReached = $raffle->total_revenue >= $raffle->total_target;
         
-        if (!$timeExpired && !$targetReached) {
+        if ($raffle->status === 'active' && !$timeExpired && !$targetReached) {
             throw new \Exception("Raffle is not ready for draw. Time not expired and target not reached.");
         }
     }
@@ -156,8 +157,9 @@ class RaffleDrawService
         $winner = $winnerTicket->user;
         $product = $raffle->product;
         
-        // In-App Notification erstellen
-        $winner->notifications()->create([
+        // In-App Notification erstellen (direkt per DB-Insert)
+        \App\Models\Notification::create([
+            'user_id' => $winner->id,
             'type' => 'raffle_won',
             'title' => '🎉 Herzlichen Glückwunsch! Du hast gewonnen!',
             'message' => "Du hast die Verlosung für '{$product->title}' gewonnen!",

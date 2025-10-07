@@ -99,18 +99,16 @@ class PayoutService
         // 1. Verkäufer erhält seinen Zielpreis
         $sellerPayout = $raffle->target_price;
         
-        $balanceBefore = $seller->wallet_balance;
-        $balanceAfter = $balanceBefore + $sellerPayout;
-        
-        $seller->wallet_balance = $balanceAfter;
-        $seller->save();
+        $seller->update([
+            'wallet_balance' => DB::raw("wallet_balance + {$sellerPayout}")
+        ]);
         
         Transaction::create([
             'user_id' => $seller->id,
             'type' => 'winning',
             'amount' => $sellerPayout,
-            'balance_before' => $balanceBefore,
-            'balance_after' => $balanceAfter,
+            'balance_before' => $seller->wallet_balance,
+            'balance_after' => $seller->wallet_balance + $sellerPayout,
             'reference_type' => 'raffle',
             'reference_id' => $raffle->id,
             'status' => 'completed',
@@ -154,18 +152,16 @@ class PayoutService
         $product = $raffle->product;
         
         // 1. Verkäufer erhält Nettoerlös (weniger als Zielpreis)
-        $balanceBefore = $seller->wallet_balance;
-        $balanceAfter = $balanceBefore + $netRevenue;
-        
-        $seller->wallet_balance = $balanceAfter;
-        $seller->save();
+        $seller->update([
+            'wallet_balance' => DB::raw("wallet_balance + {$netRevenue}")
+        ]);
         
         Transaction::create([
             'user_id' => $seller->id,
             'type' => 'winning',
             'amount' => $netRevenue,
-            'balance_before' => $balanceBefore,
-            'balance_after' => $balanceAfter,
+            'balance_before' => $seller->wallet_balance,
+            'balance_after' => $seller->wallet_balance + $netRevenue,
             'reference_type' => 'raffle',
             'reference_id' => $raffle->id,
             'status' => 'completed',
@@ -211,18 +207,16 @@ class PayoutService
         ]);
         
         // 2. Gewinner erhält den Nettoerlös in seinem Wallet
-        $balanceBefore = $winner->wallet_balance;
-        $balanceAfter = $balanceBefore + $netRevenue;
-        
-        $winner->wallet_balance = $balanceAfter;
-        $winner->save();
+        $winner->update([
+            'wallet_balance' => DB::raw("wallet_balance + {$netRevenue}")
+        ]);
         
         Transaction::create([
             'user_id' => $winner->id,
             'type' => 'winning',
             'amount' => $netRevenue,
-            'balance_before' => $balanceBefore,
-            'balance_after' => $balanceAfter,
+            'balance_before' => $winner->wallet_balance,
+            'balance_after' => $winner->wallet_balance + $netRevenue,
             'reference_type' => 'raffle',
             'reference_id' => $raffle->id,
             'status' => 'completed',
@@ -266,19 +260,17 @@ class PayoutService
                 $user = $ticket->user;
                 
                 // Geld zurück ins Wallet
-                $balanceBefore = $user->wallet_balance;
-                $balanceAfter = $balanceBefore + $ticket->price;
-                
-                $user->wallet_balance = $balanceAfter;
-                $user->save();
+                $user->update([
+                    'wallet_balance' => DB::raw("wallet_balance + {$ticket->price}")
+                ]);
                 
                 // Refund-Transaktion erstellen
                 Transaction::create([
                     'user_id' => $user->id,
                     'type' => 'refund',
                     'amount' => $ticket->price,
-                    'balance_before' => $balanceBefore,
-                    'balance_after' => $balanceAfter,
+                    'balance_before' => $user->wallet_balance,
+                    'balance_after' => $user->wallet_balance + $ticket->price,
                     'reference_type' => 'ticket',
                     'reference_id' => $ticket->id,
                     'status' => 'completed',
